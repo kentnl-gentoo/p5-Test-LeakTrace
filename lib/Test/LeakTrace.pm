@@ -5,97 +5,75 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 
-use Exporter;
-our @ISA = qw(Exporter);
+use Exporter qw(import);;
 our @EXPORT = qw(
 	leaktrace leaked_refs leaked_info leaked_count
+	not_leaked leaked_cmp_ok
 );
-our @EXPORT_FAIL = qw(not_leaked leaked_cmp_ok);
 
-push @EXPORT, @EXPORT_FAIL;
-
-sub export_fail{
+sub not_leaked(&;$){
 	require Test::LeakTrace::Heavy;
-	return;
+
+	goto \&Test::LeakTrace::Heavy::_not_leaked;
+}
+sub leaked_cmp_ok(&$$;$){
+	require Test::LeakTrace::Heavy;
+
+	goto &Test::LeakTrace::Heavy::_leaked_cmp_ok;
+}
+
+sub _do_leaktrace{
+	my($block, $name, $need_stateinfo, $mode) = @_;
+
+	if(!defined($mode) && !defined wantarray){
+		Carp::croak("Useless use of $name() in void context");
+	}
+
+
+	{
+		local $SIG{__DIE__} = 'DEFAULT';
+
+		_start($need_stateinfo);
+
+		eval{
+			$block->();
+		};
+		if($@){
+			scalar _finish(); # cleanup
+			die $@;
+		}
+	}
+
+	return _finish($mode);
 }
 
 sub leaked_refs(&){
 	my($block) = @_;
-
-	if(not defined wantarray){
-		Carp::craok('Useless use of leaked_refs() in void context');
-	}
-
-	_start(0);
-
-	{
-		local $@;
-		local $SIG{__DIE__};
-
-		eval{
-			$block->();
-		};
-		if($@){
-			warn $@;
-		}
-	}
-
-	return _finish();
+	return _do_leaktrace($block, 'leaked_refs', 0);
 }
 
 sub leaked_info(&){
 	my($block) = @_;
-
-	if(not defined wantarray){
-		Carp::craok('Useless use of leaked_info() in void context');
-	}
-
-	_start(1);
-
-	{
-		local $@;
-		local $SIG{__DIE__};
-
-		eval{
-			$block->();
-		};
-		if($@){
-			warn $@;
-		}
-	}
-
-	return _finish();
+	return _do_leaktrace($block, 'leaked_refs', 1);
 }
 
 
 sub leaked_count(&){
 	my($block) = @_;
-	return scalar &leaked_refs($block);
+	return scalar _do_leaktrace($block, 'leaked_count', 0);
 }
 
 sub leaktrace(&;$){
 	my($block, $callback) = @_;
 
-	_start(1);
+	$callback = -verobse unless defined $callback;
 
-	{
-		local $@;
-		local $SIG{__DIE__};
-
-		eval{
-			$block->();
-		};
-		if($@){
-			warn $@;
-		}
-	}
-
-	_finish($callback);
+	_do_leaktrace($block, 'leaktrace', 1, $callback);
 	return;
 }
 
@@ -108,7 +86,7 @@ Test::LeakTrace - Traces memory leaks (EXPERIMENTAL)
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.01.
+This document describes Test::LeakTrace version 0.02.
 
 =head1 SYNOPSIS
 
@@ -118,15 +96,19 @@ This document describes Test::LeakTrace version 0.01.
 	leaktrace{
 		# ...
 	};
-	# verbose report
+
+	# with verbose output
 	leaktrace{
 		# ...
 	} -verbose;
+
 	# with callback
 	leaktrace{
+		# ...
+	} sub{ 
 		my($ref, $file, $line) = @_;
-		warn "leaked $ref at $file line\n";
-	}
+		warn "leaked $ref from $file line\n";
+	};
 
 	my @refs = leaked_refs{
 		# ...
@@ -180,15 +162,27 @@ C<Test::LeakTrace> traces memory leakes.
 
 =item leaked_count { BLOCK }
 
-=item not_leaked { BLOCK }
+=item not_leaked { BLOCK } ?$description
 
-=item leaked_cmp_ok { BLOCK }
+Checks that I<BLOCK> does not leaks SVs. This is a test function
+using C<Test::Builder>.
+
+Note that I<BLOCK> is called more than once. This is because
+I<BLOCK> might prepare caches which are not memory leaks.
+
+=item leaked_cmp_ok { BLOCK } $op, ?$description
+
+Checks that I<BLOCK> leakes a specific number of SVs. This is a test
+function using C<Test::Builder>.
+
+Note that I<BLOCK> is called more than once. This is because
+I<BLOCK> might prepare caches which are not memory leaks.
 
 =back
 
 =head1 DEPENDENCIES
 
-Perl 5.8.1 or later.
+Perl 5.8.1 or later, and a C compiler.
 
 =head1 BUGS
 
@@ -201,6 +195,10 @@ Please report any bugs or feature requests to the author.
 L<Devel::LeakTrace>.
 
 L<Devel::LeakTrace::Fast>.
+
+L<Test::TraceObject>.
+
+L<Test::Weak>.
 
 =head1 AUTHOR
 

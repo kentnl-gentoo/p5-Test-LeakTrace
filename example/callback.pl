@@ -15,6 +15,6 @@ leaktrace{
 } sub {
 	my($ref, $file, $line) = @_;
 	print "#line $line $file\n";
-	print Dumper($_);
+	print Dumper($ref);
 };
 

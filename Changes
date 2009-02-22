@@ -1,4 +1,9 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.02
+	- internal cleanup
+	- internal change: use PL_runops, instead of PL_ppaddr[OP_NEXTSTATE]
+	- improve functionality of not_leaked() and leaked_cmp_ok()
+
 0.01 Tue Feb 17 12:45:10 2009
-        - original version; created by Module::Setup
+	- original version; created by Module::Setup

@@ -1,7 +1,7 @@
 #!perl -w
 
 use strict;
-use Test::LeakTrace::Script;
+use Test::LeakTrace::Script -verbose;
 
 use Scalar::Util qw(weaken);
 

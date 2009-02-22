@@ -5,7 +5,7 @@ use inc::Module::Install;
 name 'Test-LeakTrace';
 all_from 'lib/Test/LeakTrace.pm';
 
-
+requires 'Exporter'   => 5.57;
 requires 'Test::More' => 0.62;
 
 tests 't/*.t';

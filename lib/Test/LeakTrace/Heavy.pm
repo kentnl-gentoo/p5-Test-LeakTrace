@@ -2,46 +2,44 @@ package Test::LeakTrace::Heavy;
 
 use strict;
 use warnings;
-use Test::LeakTrace ();
+use Test::LeakTrace qw(leaktrace leaked_count leaked_info);
 
 use Test::Builder;
 
-package Test::LeakTrace;
-
 my $Test = Test::Builder->new();
 
-sub not_leaked(&;$){
+sub _not_leaked(&;$){
 	my($block, $description) = @_;
 
-	my @info = &leaked_info($block);
+	$block->(); # allow $block to prepare cache
 
-	$Test->ok(@info == 0, $description);
+	my $count = &leaked_count($block);
 
-	if(@info){
-		require Data::Dumper;
+	$Test->ok($count == 0, $description);
 
-		foreach my $si(@info){
-			my($ref, $file, $line) = @{$si};
-			$Test->diag("leaked at $file line $line");
-
-			my $ddx = Data::Dumper->new([$ref]);
-			$ddx->Indent(1);
-			$Test->diag($ddx->Dump());
-		}
+	if($count){
+		&leaktrace($block, -verbose);
 	}
 
-	return @info == 0;
+	return $count == 0;
 }
 
-
-sub leaked_cmp_ok(&$$;$){
+sub _leaked_cmp_ok(&$$;$){
 	my($block, $cmp_op, $expected, $description) = @_;
+
+	$block->(); # allow $block to prepare cache
 
 	$description ||= sprintf 'leaked count %-3s %s', $cmp_op, $expected;
 
 	my $got = &leaked_count($block);
-	return $Test->cmp_ok($got, $cmp_op, $expected, $description);
-};
+	my $result =  $Test->cmp_ok($got, $cmp_op, $expected, $description);
+
+	if(!$result){
+		&leaktrace($block, -verbose);
+	}
+
+	return $result;
+}
 
 1;
 

@@ -1,7 +1,7 @@
 #!perl -w
 
 use strict;
-use Test::More tests => 5;
+use Test::More tests => 6;
 
 use Test::LeakTrace;
 
@@ -12,6 +12,10 @@ not_leaked {
 	$a{b} = 1;
 	$b{a} = 2;
 } 'not leaked';
+
+not_leaked{
+	bless {}, 'Foo';
+};
 
 sub leaked{
 	my %a;

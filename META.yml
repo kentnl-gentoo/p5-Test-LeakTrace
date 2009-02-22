@@ -16,8 +16,9 @@ no_index:
     - inc
     - t
 requires:
+  Exporter: 5.57
   Test::More: 0.62
   perl: 5.8.1
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01
+version: 0.02

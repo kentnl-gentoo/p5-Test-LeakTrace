@@ -1,15 +1,9 @@
 #!perl -w
-
 use strict;
 use Time::HiRes qw(time);
-
 our $t;
-BEGIN{
-	$t = time();
-}
-END{
-	printf "spent %.02f sec.\n", time() - $t;
-}
+BEGIN{	$t = time(); }
+END{	printf "spent %.02f sec.\n", time() - $t; }
 
 use Devel::LeakTrace;
 use Class::MOP ();

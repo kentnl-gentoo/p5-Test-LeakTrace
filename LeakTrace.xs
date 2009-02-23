@@ -6,12 +6,20 @@
 
 #include "ppport.h"
 
+#include "ptr_table.h"
+
+#ifndef SvIS_FREED
+#define SvIS_FREED(sv) (SvFLAGS(sv) == SVTYPEMASK)
+#endif
+
+#define FILENAME_SIZE 50
+
 #define MY_CXT_KEY "Test::LeakTrace::_guts" XS_VERSION
 typedef struct{
 	bool enabled;
 	bool need_stateinfo;
 
-	const char* file;
+	char        file[FILENAME_SIZE];
 	I32         filelen;
 	I32         line;
 
@@ -27,9 +35,9 @@ struct stateinfo;
 struct stateinfo{
 	SV* sv;
 
-	const char* file;
-	I32         filelen;
-	I32         line;
+	char file[FILENAME_SIZE];
+	I32  filelen;
+	I32  line;
 
 	struct stateinfo* next;
 };
@@ -39,15 +47,14 @@ static void
 my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
 	assert(tbl);
 	if (tbl->tbl_items) {
-		register PTR_TBL_ENT_t * const * const array = tbl->tbl_ary;
+		PTR_TBL_ENT_t * const * const array = tbl->tbl_ary;
 		UV riter = tbl->tbl_max;
 
 		do {
-			PTR_TBL_ENT_t *entry = array[riter];
+			register PTR_TBL_ENT_t *entry = array[riter];
 
 			while (entry) {
 				if(entry->newval){
-					Safefree( ((struct stateinfo*)entry->newval)->file );
 					Safefree(entry->newval);
 					entry->newval = NULL;
 				}
@@ -61,19 +68,44 @@ my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
 /* START_VISIT and END_VISIT macros are originated from S_visit() in sv.c.
    They are used to scan the sv arena.
 */
-#define START_VISIT STMT_START{                                        \
-	dVAR; SV* sva;                                                 \
-	for(sva = PL_sv_arenaroot; sva; sva = (SV*)SvANY(sva)){        \
-		register const SV * const svend = &sva[SvREFCNT(sva)]; \
-		register SV* sv;                                       \
-		for(sv = sva + 1; sv < svend; ++sv){                   \
-			if (SvTYPE(sv) != SVTYPEMASK && SvREFCNT(sv))  \
+#define START_VISIT STMT_START{                                  \
+	SV* sva;                                                 \
+	for(sva = PL_sv_arenaroot; sva; sva = (SV*)SvANY(sva)){  \
+		const SV * const svend = &sva[SvREFCNT(sva)];    \
+		register SV* sv;                                 \
+		for(sv = sva + 1; sv < svend; ++sv){             \
+			if (!SvIS_FREED(sv))
 
 #define END_VISIT                  \
 		} /* end for(1) */ \
 	} /* end for(2) */         \
 	} STMT_END
 
+
+static I32
+my_min(I32 const x, I32 const y){
+	return x < y ? x : y;
+}
+
+static void
+set_stateinfo(pTHX_ pMY_CXT_ const char* const file, I32 const line){
+	I32 filelen;
+	assert(file);
+
+	filelen = strlen(file);
+	MY_CXT.filelen = my_min(filelen, sizeof(MY_CXT.file)-1);
+
+	if(filelen == MY_CXT.filelen){
+		Copy(file, MY_CXT.file, MY_CXT.filelen, char);
+	}
+	else{ /* truncated */
+		Copy(file + (filelen - MY_CXT.filelen), MY_CXT.file, MY_CXT.filelen, char);
+		Copy("...", MY_CXT.file, 3, char);
+	}
+	MY_CXT.file[MY_CXT.filelen] = '\0';
+
+	MY_CXT.line = line;
+}
 
 static void
 mark_all(pTHX_ pMY_CXT){
@@ -91,8 +123,7 @@ mark_all(pTHX_ pMY_CXT){
 			while (entry) {
 				struct stateinfo* const si = (struct stateinfo*)entry->newval;
 
-				if(si && SvREFCNT(si->sv) == 0){
-					Safefree(si->file);
+				if(si && SvIS_FREED(si->sv)){
 					Safefree(si);
 					entry->newval = NULL;
 				}
@@ -104,25 +135,18 @@ mark_all(pTHX_ pMY_CXT){
 
 	/* mark SVs as "new" with statement info */
 	START_VISIT {
-
 		if(!ptr_table_fetch(MY_CXT.usedsv_reg, sv) && !ptr_table_fetch(MY_CXT.newsv_reg, sv)){
 			struct stateinfo* si;
 
-			Newx(si, 1, struct stateinfo);
+			Newxz(si, 1, struct stateinfo);
 
 			ptr_table_store(MY_CXT.newsv_reg, sv, si);
 			si->sv   = sv;
-			si->next = NULL;
 
 			if(MY_CXT.need_stateinfo){
-				si->file    = savepvn(MY_CXT.file, MY_CXT.filelen);
+				Copy(MY_CXT.file, si->file, MY_CXT.filelen+1, char);
 				si->filelen = MY_CXT.filelen;
 				si->line    = MY_CXT.line;
-			}
-			else{
-				si->file    = NULL;
-				si->filelen = 0;
-				si->line    = 0;
 			}
 		}
 	} END_VISIT;
@@ -133,10 +157,7 @@ leaktrace_runops(pTHX){
 	dVAR;
 	dMY_CXT;
 
-	MY_CXT.file    = CopFILE(PL_curcop);
-	if(!MY_CXT.file) MY_CXT.file = "(unknown)";
-	MY_CXT.filelen = strlen(MY_CXT.file);
-	MY_CXT.line    = CopLINE(PL_curcop);
+	set_stateinfo(aTHX_ aMY_CXT_ CopFILE(PL_curcop), CopLINE(PL_curcop));
 
 	while((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX))) {
 		PERL_ASYNC_CHECK();
@@ -146,10 +167,7 @@ leaktrace_runops(pTHX){
 		if(PL_op->op_type == OP_NEXTSTATE || PL_op->op_type == OP_DBSTATE){
 			mark_all(aTHX_ aMY_CXT);
 
-			MY_CXT.file    = CopFILE(PL_curcop);
-			if(!MY_CXT.file) MY_CXT.file = "(unknown)";
-			MY_CXT.filelen = strlen(MY_CXT.file);
-			MY_CXT.line    = CopLINE(PL_curcop);
+			set_stateinfo(aTHX_ aMY_CXT_ CopFILE(PL_curcop), CopLINE(PL_curcop));
 		}
 	}
 
@@ -163,38 +181,29 @@ leaktrace_runops(pTHX){
 
 static void
 callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
-	SV* filesv;
-	SV* linesv;
-
-	ENTER;
-	SAVETMPS;
-
-	filesv = sv_newmortal();
-	linesv = sv_newmortal();
-
 	while(leaked){
-		SV* const sv = newRV_inc(leaked->sv);
 		dSP;
 		I32 n;
 
+		if(SvIS_FREED(leaked->sv)){
+			/* NOTE: it is possible when the callback releases some SVs. */
+			leaked = leaked->next;
+			continue;
+		}
+
 		ENTER;
 		SAVETMPS;
-		sv_2mortal(sv);
 
 		PUSHMARK(SP);
 
-		if(leaked->file){
-			sv_setpvn(filesv, leaked->file, leaked->filelen);
-			sv_setiv(linesv, leaked->line);
+		mXPUSHs(newRV_inc(leaked->sv));
 
-			EXTEND(SP, 3);
-			PUSHs(sv);
-			PUSHs(filesv);
-			PUSHs(linesv);
+		if(leaked->filelen){
+			EXTEND(SP, 2);
+			mPUSHp(leaked->file, leaked->filelen);
+			mPUSHi(leaked->line);
 		}
-		else{
-			XPUSHs(sv);
-		}
+
 		PUTBACK;
 
 		n = call_sv(callback, G_VOID);
@@ -208,14 +217,13 @@ callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
 
 		leaked = leaked->next;
 	}
-
-	FREETMPS;
-	LEAVE;
 }
 static void
 report_each_leaked(pTHX_ struct stateinfo* leaked, bool const verbose){
 	while(leaked){
-		if(leaked->file){
+		assert(!SvIS_FREED(leaked->sv));
+
+		if(leaked->filelen){
 			PerlIO_printf(Perl_debug_log, "#leaked %s(0x%p) from %s line %d.\n",
 				sv_reftype(leaked->sv, FALSE),
 				leaked->sv,
@@ -263,6 +271,8 @@ CODE:
 	if(MY_CXT.enabled){
 		Perl_croak(aTHX_ "Cannot start LeakTrace inside its scope");
 	}
+	assert(MY_CXT.usedsv_reg == NULL);
+	assert(MY_CXT.newsv_reg  == NULL);
 
 	MY_CXT.enabled          = TRUE;
 	MY_CXT.need_stateinfo   = need_stateinfo;
@@ -303,9 +313,9 @@ PPCODE:
 	assert(MY_CXT.newsv_reg);
 
 	mark_all(aTHX_ aMY_CXT);
+
 	MY_CXT.enabled        = FALSE;
 	MY_CXT.need_stateinfo = FALSE;
-
 
 	START_VISIT{
 		struct stateinfo* const si = (struct stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
@@ -326,9 +336,11 @@ PPCODE:
 	else if(gimme == G_ARRAY){
 		EXTEND(SP, count);
 		while(leaked){
-			SV* sv = newRV_inc(leaked->sv);
+			SV* sv;
 
-			if(leaked->file){
+			sv = newRV_inc(leaked->sv);
+
+			if(leaked->filelen){
 				AV* const av = newAV();
 
 				av_push(av, sv);

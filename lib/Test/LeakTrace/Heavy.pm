@@ -49,5 +49,9 @@ __END__
 
 Test::LeakTrace::Heavy - Test::LeakTrace guts
 
+=head1 DESCRIPTION
+
+This module implements test commands for C<Test::LeakTrace>.
+
 =cut
 

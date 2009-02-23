@@ -6,7 +6,8 @@ BEGIN{	$t = time(); }
 END{	printf "spent %.02f sec.\n", time() - $t; }
 
 use Test::LeakTrace::Script;
-use Class::MOP ();
+
+use ExtUtils::MakeMaker (); # a large module
 
 {
 	my %hash;

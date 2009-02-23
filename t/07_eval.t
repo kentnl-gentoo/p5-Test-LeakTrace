@@ -13,7 +13,8 @@ for(1 .. 2){
 
 			$b{a} = \%a;
 			$a{b} = \%b;
-		};
+			1
+		} or die $@;
 	} '>', 0;
 
 	my @info = 	leaked_info { eval q{
@@ -22,13 +23,14 @@ for(1 .. 2){
 
 			$b{a} = \%a;
 			$a{b} = \%b;
-		};
+			1;
+		} or die $@;
 	};
 
 	cmp_ok scalar(@info), '>', 0;
 
 	@info = leaked_info{
-		use Class::Struct;
+		use Class::Struct; # use eval() for build classes
 
 		struct "Foo$_" => { bar => '$' };
 

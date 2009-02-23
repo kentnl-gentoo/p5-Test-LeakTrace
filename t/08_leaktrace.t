@@ -1,19 +1,35 @@
 #!perl -w
 
 use strict;
-use Test::More tests => 1;
+use Test::More 'no_plan'; # I cannot know the number of 'ok'
 
 use Test::LeakTrace;
 
-my @refs;
+ok defined &leaktrace;
+
 leaktrace{
 	my %a = (foo => 42);
 	my %b = (bar => 3.14);
 
 	$b{a} = \%a;
 	$a{b} = \%b;
+
+	pass 'in leaktrace block';
 } sub {
-	push @refs, \@_;
+	my($ref, $file, $line) = @_;
+
+	is scalar(@_), 3, 'leaktrace callback args is 3 (svref, file, line)';
+
+	ok ref($ref), ref $ref;
+	isnt ref($ref), 'UNKNOWN';
+	isnt $file, undef;
+	isnt $line, undef;
 };
 
-cmp_ok scalar(@refs), '>', 1;
+leaktrace{
+	my %a = (foo => 42);
+	my %b = (bar => 3.14);
+} sub {
+	fail 'must not be called';
+};
+

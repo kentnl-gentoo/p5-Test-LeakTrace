@@ -5,6 +5,8 @@ benchmark/test_leaktrace.pl
 Changes
 example/callback.pl
 example/leaked.pl
+example/leaktrace.t
+example/method_cache.pl
 example/test_fail.pl
 example/weakref.pl
 inc/Module/Install.pm
@@ -22,6 +24,7 @@ MANIFEST			This list of files
 MANIFEST.SKIP
 META.yml
 ppport.h
+ptr_table.h
 README
 t/00_compile.t
 t/01_info.t
@@ -36,3 +39,4 @@ t/10_bad_use.t
 xt/01_podspell.t
 xt/02_pod.t
 xt/03_pod-coverage.t
+xt/04_synopsis_syntax.t

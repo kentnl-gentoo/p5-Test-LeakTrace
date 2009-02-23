@@ -5,12 +5,12 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 
-use Exporter qw(import);;
+use Exporter qw(import);
 our @EXPORT = qw(
 	leaktrace leaked_refs leaked_info leaked_count
 	not_leaked leaked_cmp_ok
@@ -86,7 +86,7 @@ Test::LeakTrace - Traces memory leaks (EXPERIMENTAL)
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.02.
+This document describes Test::LeakTrace version 0.03.
 
 =head1 SYNOPSIS
 
@@ -97,7 +97,7 @@ This document describes Test::LeakTrace version 0.02.
 		# ...
 	};
 
-	# with verbose output
+	# verbose output
 	leaktrace{
 		# ...
 	} -verbose;
@@ -105,7 +105,7 @@ This document describes Test::LeakTrace version 0.02.
 	# with callback
 	leaktrace{
 		# ...
-	} sub{ 
+	} sub {
 		my($ref, $file, $line) = @_;
 		warn "leaked $ref from $file line\n";
 	};
@@ -132,15 +132,9 @@ This document describes Test::LeakTrace version 0.02.
 		# ...
 	} '<', 10;
 
-	# script interface like Devel::LeakTrace
-	use Test::LeakTrace::Script;
-	# ...
-
-	$ LEAKTRACE_VERBOSE=1 perl -MTest::LeakTrace::Script script.pl
-
 =head1 DESCRIPTION
 
-C<Test::LeakTrace> traces memory leakes.
+C<Test::LeakTrace> provides several functions that trace memory leaks.
 
 (TODO)
 
@@ -164,7 +158,7 @@ C<Test::LeakTrace> traces memory leakes.
 
 =item not_leaked { BLOCK } ?$description
 
-Checks that I<BLOCK> does not leaks SVs. This is a test function
+Tests that I<BLOCK> does not leaks SVs. This is a test function
 using C<Test::Builder>.
 
 Note that I<BLOCK> is called more than once. This is because
@@ -172,13 +166,70 @@ I<BLOCK> might prepare caches which are not memory leaks.
 
 =item leaked_cmp_ok { BLOCK } $op, ?$description
 
-Checks that I<BLOCK> leakes a specific number of SVs. This is a test
+Tests that I<BLOCK> leakes a specific number of SVs. This is a test
 function using C<Test::Builder>.
 
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
 =back
+
+=head2 Script interface
+
+Like C<Devel::LeakTrace> C<Test::LeakTrace::Script> is provided for whole scripts.
+
+For command line:
+
+	$ LEAKTRACE_VERBOSE=1 perl -MTest::LeakTrace::Script script.pl
+	$ perl -MTest::LeakTrace::Script=1 script.pl
+
+C<use Test::LeakTrace::Script> also accepts a callback function as follows.
+
+	#!perl
+	# ...
+
+	use Test::LeakTrace::Script sub{
+		my($ref, $file, $line) = @_;
+		# ...
+	};
+
+	# ...
+
+=head1 EXAMPLES
+
+=head2 Tracing circular references
+
+	#!perl-w
+	use strict;
+	use Test::LeakTrace;
+
+	leaktrace{
+		my %a;
+		my %b;
+
+		$a{b} = \%b;
+		$b{a} = \%a;
+	};
+
+	__END__
+
+=head2 Testing modules
+
+Here is a test script template that checks memory leaks.
+
+	#!perl -w
+	use strict;
+	use constant HAS_LEAKTRACE => eval{ require Test::LeakTrace };
+	use Test::More HAS_LEAKTRACE ? (tests => 1) : (skip_all => 'require Test::LeakTrace');
+	use Test::LeakTrace;
+
+	use Some::Module;
+
+	leaked_cmp_ok{
+		my $o = Some::Module->new();
+		$o->something();
+		$o->something_else();
+	} '<', 1;
 
 =head1 DEPENDENCIES
 

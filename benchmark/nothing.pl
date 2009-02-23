@@ -5,7 +5,8 @@ our $t;
 BEGIN{	$t = time(); }
 END{	printf "spent %.02f sec.\n", time() - $t; }
 
-use Class::MOP ();
+
+use ExtUtils::MakeMaker (); # a large module
 
 {
 	my %hash;

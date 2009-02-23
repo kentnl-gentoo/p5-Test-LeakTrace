@@ -1,7 +1,7 @@
 #!perl -w
 
 use strict;
-use Test::More tests => 2;
+use Test::More tests => 3;
 
 use Test::LeakTrace;
 
@@ -24,3 +24,4 @@ cmp_ok(scalar(@refs), '>', 1) or do{
 	diag(Data::Dumper->Dump([\@refs], ['*refs']));
 };
 
+cmp_ok scalar(grep{ ref($_) eq 'HASH' } @refs), '>=', 2;

@@ -1,17 +1,20 @@
 #!perl -w
 
 use strict;
-use Test::More tests => 4;
+use Test::More tests => 5;
 
 use Test::LeakTrace;
 
-is leaked_count {
+sub normal{
 	my %a;
 	my %b;
 
 	$a{b} = 1;
 	$b{a} = 2;
-}, 0, 'not leaked';
+}
+
+is leaked_count(\&normal), 0, 'not leaked(1)';
+is leaked_count(\&normal), 0, 'not leaked(2)';
 
 sub leaked{
 	my %a;

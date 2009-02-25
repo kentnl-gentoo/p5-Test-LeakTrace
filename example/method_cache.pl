@@ -16,5 +16,5 @@ use Test::LeakTrace;
 
 leaktrace{
 	Derived->hello();
-};
+} -verbose;
 

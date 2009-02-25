@@ -4,6 +4,7 @@
 #define NO_XSLOCKS /* use exception handling macros */
 #include <XSUB.h>
 
+#define NEED_newSVpvn_flags /* newSVpvs_flags depends on */
 #include "ppport.h"
 
 #include "ptr_table.h"
@@ -12,6 +13,15 @@
 #define SvIS_FREED(sv) (SvFLAGS(sv) == SVTYPEMASK)
 #endif
 
+#define PteKey(pte) ((SV*)pte->oldval)
+#define PteVal(pte) ((struct stateinfo*)pte->newval)
+
+#define REPORT_DISABLED     0x00
+#define REPORT_ENABLED      0x01
+#define REPORT_SV_DUMP      0x02
+#define REPORT_SOURCE_LINES 0x04
+#define REPORT_SILENT       0x08
+
 #define FILENAME_SIZE 50
 
 #define MY_CXT_KEY "Test::LeakTrace::_guts" XS_VERSION
@@ -19,11 +29,9 @@ typedef struct{
 	bool enabled;
 	bool need_stateinfo;
 
-	char        file[FILENAME_SIZE];
-	I32         filelen;
-	I32         line;
-
-	runops_proc_t runops;
+	char* file;
+	I32   filelen;
+	I32   line;
 
 	PTR_TBL_t* usedsv_reg;
 	PTR_TBL_t* newsv_reg;
@@ -35,9 +43,9 @@ struct stateinfo;
 struct stateinfo{
 	SV* sv;
 
-	char file[FILENAME_SIZE];
-	I32  filelen;
-	I32  line;
+	char* file;
+	I32   filelen;
+	I32   line;
 
 	struct stateinfo* next;
 };
@@ -54,10 +62,9 @@ my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
 			register PTR_TBL_ENT_t *entry = array[riter];
 
 			while (entry) {
-				if(entry->newval){
-					Safefree(entry->newval);
-					entry->newval = NULL;
-				}
+				Safefree(PteVal(entry)->file);
+				Safefree(entry->newval);
+				entry->newval = NULL;
 
 				entry = entry->next;
 			}
@@ -82,37 +89,25 @@ my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
 	} STMT_END
 
 
-static I32
-my_min(I32 const x, I32 const y){
-	return x < y ? x : y;
-}
-
 static void
-set_stateinfo(pTHX_ pMY_CXT_ const char* const file, I32 const line){
-	I32 filelen;
+set_stateinfo(pTHX_ pMY_CXT_ COP* const cop){
+	const char* file;
+	assert(cop);
+
+	file = CopFILE(cop);
 	assert(file);
 
-	filelen = strlen(file);
-	MY_CXT.filelen = my_min(filelen, sizeof(MY_CXT.file)-1);
+	MY_CXT.filelen = strlen(file);
+	Renew(MY_CXT.file, MY_CXT.filelen+1, char);
+	Copy(file, MY_CXT.file, MY_CXT.filelen+1, char);
 
-	if(filelen == MY_CXT.filelen){
-		Copy(file, MY_CXT.file, MY_CXT.filelen, char);
-	}
-	else{ /* truncated */
-		Copy(file + (filelen - MY_CXT.filelen), MY_CXT.file, MY_CXT.filelen, char);
-		Copy("...", MY_CXT.file, 3, char);
-	}
-	MY_CXT.file[MY_CXT.filelen] = '\0';
-
-	MY_CXT.line = line;
+	MY_CXT.line = CopLINE(cop);
 }
 
 static void
-mark_all(pTHX_ pMY_CXT){
-	assert(MY_CXT.usedsv_reg);
+unmark_all(pTHX_ pMY_CXT){
 	assert(MY_CXT.newsv_reg);
 
-	/* unmark freed SVs */
 	if (MY_CXT.newsv_reg->tbl_items) {
 		register PTR_TBL_ENT_t * const * const array = MY_CXT.newsv_reg->tbl_ary;
 		UV riter = MY_CXT.newsv_reg->tbl_max;
@@ -121,29 +116,43 @@ mark_all(pTHX_ pMY_CXT){
 			PTR_TBL_ENT_t *entry = array[riter];
 
 			while (entry) {
-				struct stateinfo* const si = (struct stateinfo*)entry->newval;
-
-				if(si && SvIS_FREED(si->sv)){
-					Safefree(si);
-					entry->newval = NULL;
+				if(SvIS_FREED(PteKey(entry))){
+					PteVal(entry)->sv = NULL;
 				}
 
 				entry = entry->next;
 			}
 		} while (riter--);
 	}
+}
+
+static void
+mark_all(pTHX_ pMY_CXT){
+	assert(MY_CXT.usedsv_reg);
+	assert(MY_CXT.newsv_reg);
+
+	unmark_all(aTHX_ aMY_CXT);
 
 	/* mark SVs as "new" with statement info */
 	START_VISIT {
-		if(!ptr_table_fetch(MY_CXT.usedsv_reg, sv) && !ptr_table_fetch(MY_CXT.newsv_reg, sv)){
-			struct stateinfo* si;
+		if(!ptr_table_fetch(MY_CXT.usedsv_reg, sv)){
+			struct stateinfo* si = (struct stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
 
-			Newxz(si, 1, struct stateinfo);
-
-			ptr_table_store(MY_CXT.newsv_reg, sv, si);
+			if(si){
+				if(si->sv){
+					continue; /* already marked */
+				}
+				/* unmarked */
+			}
+			else{
+				/* not marked */
+				Newxz(si, 1, struct stateinfo);
+				ptr_table_store(MY_CXT.newsv_reg, sv, si);
+			}
 			si->sv   = sv;
 
 			if(MY_CXT.need_stateinfo){
+				Renew(si->file, MY_CXT.filelen+1, char);
 				Copy(MY_CXT.file, si->file, MY_CXT.filelen+1, char);
 				si->filelen = MY_CXT.filelen;
 				si->line    = MY_CXT.line;
@@ -156,18 +165,24 @@ static int
 leaktrace_runops(pTHX){
 	dVAR;
 	dMY_CXT;
-
-	set_stateinfo(aTHX_ aMY_CXT_ CopFILE(PL_curcop), CopLINE(PL_curcop));
+	COP* last_cop = PL_curcop;
 
 	while((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX))) {
 		PERL_ASYNC_CHECK();
 
 		if(!MY_CXT.need_stateinfo) continue;
 
-		if(PL_op->op_type == OP_NEXTSTATE || PL_op->op_type == OP_DBSTATE){
-			mark_all(aTHX_ aMY_CXT);
+#if 0
+		PerlIO_printf(Perl_debug_log, "#run [%s] %s %d\n",
+			OP_NAME(PL_op),
+			CopFILE(PL_curcop),
+			(int)CopLINE(PL_curcop));
+#endif
 
-			set_stateinfo(aTHX_ aMY_CXT_ CopFILE(PL_curcop), CopLINE(PL_curcop));
+		if(last_cop != PL_curcop){
+			mark_all(aTHX_ aMY_CXT);
+			last_cop = PL_curcop;
+			set_stateinfo(aTHX_ aMY_CXT_ last_cop);
 		}
 	}
 
@@ -218,22 +233,85 @@ callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
 		leaked = leaked->next;
 	}
 }
+
 static void
-report_each_leaked(pTHX_ struct stateinfo* leaked, bool const verbose){
+print_lines_around(pTHX_ PerlIO* const ofp, const char* const file, int const lineno){
+	PerlIO* const ifp = PerlIO_open(file, "r");
+	SV* const sv = DEFSV;
+	int i = 0;
+	if(ifp){
+		while(sv_gets(sv, ifp, FALSE)){
+			i++;
+
+			if( i >= (lineno-1) ){
+				PerlIO_printf(ofp, "%4d:%"SVf, i, sv);
+
+				if( i >= (lineno+1) ){
+					break;
+				}
+			}
+		}
+		PerlIO_close(ifp);
+	}
+}
+
+static void
+report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode, PerlIO* logfp){
+
+	if(reporting_mode & REPORT_SILENT){
+		return;
+	}
+
+	if(!logfp){
+		logfp = Perl_error_log;
+	}
+
+	if(reporting_mode & REPORT_SOURCE_LINES){
+		ENTER;
+		SAVETMPS;
+
+		 /*
+		     local $/ = "\n"
+		     local $_;
+		  */
+		SAVESPTR(PL_rs);
+		SAVE_DEFSV;
+
+		PL_rs = newSVpvs_flags("\n", SVs_TEMP);
+		DEFSV = sv_newmortal();
+	}
+
 	while(leaked){
 		assert(!SvIS_FREED(leaked->sv));
 
 		if(leaked->filelen){
-			PerlIO_printf(Perl_debug_log, "#leaked %s(0x%p) from %s line %d.\n",
+			PerlIO_printf(logfp, "leaked %s(0x%p) from %s line %d.\n",
 				sv_reftype(leaked->sv, FALSE),
 				leaked->sv,
 				leaked->file, (int)leaked->line);
+
+			if(leaked->line && reporting_mode & REPORT_SOURCE_LINES){
+				print_lines_around(aTHX_ logfp, leaked->file, leaked->line);
+			}
 		}
 
-		if(verbose){
-			sv_dump(leaked->sv);
+		if(reporting_mode & REPORT_SV_DUMP){
+			do_sv_dump(
+				0,     /* level */
+				logfp,
+				leaked->sv,
+				0,     /* nest */
+				4,     /* maxnest */
+				FALSE, /* dumpops */
+				0      /* pvlim */
+			);
 		}
 		leaked = leaked->next;
+	}
+
+	if(reporting_mode & REPORT_SOURCE_LINES){
+		FREETMPS;
+		LEAVE;
 	}
 }
 
@@ -249,7 +327,6 @@ BOOT:
 	MY_CXT.newsv_reg      = NULL;
 	MY_CXT.enabled        = FALSE;
 	MY_CXT.need_stateinfo = FALSE;
-	MY_CXT.runops         = PL_runops;
 	PL_runops             = leaktrace_runops;
 }
 
@@ -285,14 +362,15 @@ CODE:
 	} END_VISIT;
 
 void
-_finish(SV* mode = &PL_sv_undef)
+_finish(SV* mode = &PL_sv_undef, SV* logfp = &PL_sv_undef)
 PREINIT:
 	I32 gimme = GIMME_V;
 	dMY_CXT;
 	IV count = 0;
 	struct stateinfo* volatile leaked = NULL; /* volatile to pass -Wuninitialized (longjmp) */
-	SV* volatile callback = NULL;             /* volatile to pass -Wuninitialized (longjmp) */
-	bool verbose = FALSE;
+	SV* volatile callback = NULL;
+	SV* volatile invalid_mode = NULL;
+	int reporting_mode = REPORT_DISABLED;
 PPCODE:
 	if(!MY_CXT.enabled){
 		Perl_warn(aTHX_ "LeakTrace not started");
@@ -300,13 +378,32 @@ PPCODE:
 	}
 
 	if(SvOK(mode)){
-		gimme = G_VOID; /* reporting mode */
-
 		if(SvROK(mode) && SvTYPE(SvRV(mode)) == SVt_PVCV){
+			reporting_mode = REPORT_ENABLED;
 			callback = mode;
 		}
 		else{
-			verbose = SvTRUE(mode);
+			const char* const modepv = SvPV_nolen_const(mode);
+
+			if(strEQ(modepv, "-simple")){
+				reporting_mode = REPORT_ENABLED;
+			}
+			else if(strEQ(modepv, "-sv_dump")){
+				reporting_mode = REPORT_SV_DUMP;
+			}
+			else if(strEQ(modepv, "-lines")){
+				reporting_mode = REPORT_SOURCE_LINES;
+			}
+			else if(strEQ(modepv, "-verbose")){
+				reporting_mode = REPORT_SV_DUMP | REPORT_SOURCE_LINES;
+			}
+			else if(strEQ(modepv, "-silent")){
+				reporting_mode = REPORT_SILENT;
+			}
+			else{
+				reporting_mode = REPORT_SILENT;
+				invalid_mode   = mode;
+			}
 		}
 	}
 	assert(MY_CXT.usedsv_reg);
@@ -320,7 +417,7 @@ PPCODE:
 	START_VISIT{
 		struct stateinfo* const si = (struct stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
 
-		if(si){
+		if(si && si->sv){
 			count++;
 			si->next = leaked; /* make a link */
 			leaked = si;
@@ -330,7 +427,27 @@ PPCODE:
 	ptr_table_free(MY_CXT.usedsv_reg);
 	MY_CXT.usedsv_reg = NULL;
 
-	if(gimme == G_SCALAR){
+	if(reporting_mode){
+		if(callback){
+			dXCPT;
+			XCPT_TRY_START {
+				callback_each_leaked(aTHX_ leaked, callback);
+			} XCPT_TRY_END
+
+			XCPT_CATCH {
+				ptr_table_free_val(MY_CXT.newsv_reg);
+				ptr_table_free(MY_CXT.newsv_reg);
+				MY_CXT.newsv_reg = NULL;
+
+				XCPT_RETHROW;
+			}
+		}
+		else{
+			report_each_leaked(aTHX_ leaked, reporting_mode,
+				SvOK(logfp) ? IoOFP(sv_2io(logfp)) : NULL);
+		}
+	}
+	else if(gimme == G_SCALAR){
 		mXPUSHi(count);
 	}
 	else if(gimme == G_ARRAY){
@@ -353,27 +470,12 @@ PPCODE:
 			leaked = leaked->next;
 		}
 	}
-	else{ /* reporting mode */
-		if(callback){
-			dXCPT;
-			XCPT_TRY_START {
-				callback_each_leaked(aTHX_ leaked, callback);
-			} XCPT_TRY_END
-
-			XCPT_CATCH {
-				ptr_table_free_val(MY_CXT.newsv_reg);
-				ptr_table_free(MY_CXT.newsv_reg);
-				MY_CXT.newsv_reg = NULL;
-
-				XCPT_RETHROW;
-			}
-		}
-		else{
-			report_each_leaked(aTHX_ leaked, verbose);
-		}
-	}
 
 	ptr_table_free_val(MY_CXT.newsv_reg);
 	ptr_table_free(MY_CXT.newsv_reg);
 	MY_CXT.newsv_reg = NULL;
+
+	if(invalid_mode){
+		Perl_croak(aTHX_ "Invalid reporting mode: %"SVf, invalid_mode);
+	}
 

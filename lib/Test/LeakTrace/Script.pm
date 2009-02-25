@@ -4,8 +4,7 @@ use strict;
 
 use Test::LeakTrace ();
 
-my $Mode = $ENV{PERL_LEAKTRACE_VERBOSE};
-$Mode = $ENV{LEAKTRACE_VERBOSE} unless defined $Mode;
+my $Mode = $ENV{TEST_LEAKTRACE};
 
 sub import{
 	shift;
@@ -18,6 +17,7 @@ INIT{
 }
 
 END{
+	$Mode = -simple unless defined $Mode;
 	Test::LeakTrace::_finish($Mode);
 	return;
 }
@@ -35,12 +35,26 @@ Test::LeakTrace::Script - A LeakTrace interface for whole scripts
 
 	$ perl -MTest::LeakTrace::Script=-verbose script.pl
 
+	$ TEST_LEAKTRACE=-lines script.pl
+
 	#!perl
 	use Test::LeakTrace::Script sub{
 		my($svref, $file, $line) = @_;
 
 		warn "leaked $svref from $file line $line.\n";
 	};
+
+=head1 ENVIRONMENT VARIABLES
+
+=head2 TEST_LEAKTRACE=mode
+
+=head3 -simple (DEFAULT)
+
+=head3 -sv_dump
+
+=head3 -lines
+
+=head3 -verbose
 
 =cut
 

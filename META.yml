@@ -1,5 +1,5 @@
 ---
-abstract: 'Traces memory leaks (EXPERIMENTAL)'
+abstract: 'Traces memory leaks'
 author:
   - 'Goro Fuji <gfuji(at)cpan.org>.'
 configure_requires:
@@ -21,4 +21,4 @@ requires:
   perl: 5.8.1
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.03
+version: 0.04

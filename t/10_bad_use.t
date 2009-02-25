@@ -1,7 +1,7 @@
 #!perl -w
 
 use strict;
-use Test::More tests => 4;
+use Test::More tests => 6;
 
 use Test::LeakTrace;
 
@@ -31,4 +31,12 @@ for(1 .. 2){
 		};
 	};
 	is_deeply $@, ['foo'], 'die in callback';
+
+	eval{
+		leaktrace{
+			my @array;
+			push @array, \@array;
+		} -foobar;
+	};
+	like $@, qr/Invalid reporting mode/, 'invalid mode';
 }

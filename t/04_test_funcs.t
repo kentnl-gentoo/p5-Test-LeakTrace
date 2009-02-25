@@ -3,7 +3,7 @@
 use strict;
 use Test::More tests => 8;
 
-use Test::LeakTrace;
+use Test::LeakTrace qw(:test);
 
 {
 	package Foo;

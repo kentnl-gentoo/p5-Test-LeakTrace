@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -14,6 +14,12 @@ use Exporter qw(import);
 our @EXPORT = qw(
 	leaktrace leaked_refs leaked_info leaked_count
 	not_leaked leaked_cmp_ok
+);
+
+our %EXPORT_TAGS = (
+	all  => \@EXPORT,
+	test => [qw(not_leaked leaked_cmp_ok)],
+	util => [qw(leaktrace leaked_refs leaked_info leaked_count)],
 );
 
 sub not_leaked(&;$){
@@ -28,12 +34,11 @@ sub leaked_cmp_ok(&$$;$){
 }
 
 sub _do_leaktrace{
-	my($block, $name, $need_stateinfo, $mode) = @_;
+	my($block, $name, $need_stateinfo, $mode, $logfp) = @_;
 
 	if(!defined($mode) && !defined wantarray){
 		Carp::croak("Useless use of $name() in void context");
 	}
-
 
 	{
 		local $SIG{__DIE__} = 'DEFAULT';
@@ -44,12 +49,12 @@ sub _do_leaktrace{
 			$block->();
 		};
 		if($@){
-			scalar _finish(); # cleanup
+			_finish(-silent);
 			die $@;
 		}
 	}
 
-	return _finish($mode);
+	return _finish($mode, $logfp);
 }
 
 sub leaked_refs(&){
@@ -69,11 +74,10 @@ sub leaked_count(&){
 }
 
 sub leaktrace(&;$){
-	my($block, $callback) = @_;
+	my($block, $mode, $logfp) = @_;
 
-	$callback = -verobse unless defined $callback;
-
-	_do_leaktrace($block, 'leaktrace', 1, $callback);
+	$mode = -simple unless defined $mode;
+	_do_leaktrace($block, 'leaktrace', 1, $mode, $logfp);
 	return;
 }
 
@@ -82,11 +86,11 @@ __END__
 
 =head1 NAME
 
-Test::LeakTrace - Traces memory leaks (EXPERIMENTAL)
+Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.03.
+This document describes Test::LeakTrace version 0.04.
 
 =head1 SYNOPSIS
 
@@ -135,28 +139,50 @@ This document describes Test::LeakTrace version 0.03.
 =head1 DESCRIPTION
 
 C<Test::LeakTrace> provides several functions that trace memory leaks.
+This module scans arenas, the memory allocation system,
+so it can detect any leaked SVs in given blocks.
 
-(TODO)
+TODO: writeing the document
 
 =head1 INTERFACE
 
 =head2 Exported functions
 
+
+=head3 leaktrace { BLOCK } ?($mode | \&callback)
+
+Traces I<BLOCK> and reports leaked SVs.
+
+Defined I<$mode>s are:
+
 =over 4
 
-=item leaktrace { BLOCK }
+=item -simple
 
-=item leaktrace { BLOCK } -verbose
+Default. Reports the leaked sv identity (type and address), filename and lineno to C<*STDERR>.
 
-=item leaktrace { BLOCK } \&callback
+=item -sv_dump
 
-=item leaked_refs { BLOCK }
+In addition to B<-simple>, dumps the sv content using C<sv_dump()>,
+which also implements C<Devel::Peek::Dump()>.
 
-=item leaked_info { BLOCK }
+=item -lines
 
-=item leaked_count { BLOCK }
+In addition to B<-simple>, prints suspicious source lines.
 
-=item not_leaked { BLOCK } ?$description
+=item -verbose
+
+Both B<-sv_dump> and B<-lines>.
+
+=back
+
+=head3 leaked_info { BLOCK }
+
+=head3 leaked_refs { BLOCK }
+
+=head3 leaked_count { BLOCK }
+
+=head3 not_leaked { BLOCK } ?$description
 
 Tests that I<BLOCK> does not leaks SVs. This is a test function
 using C<Test::Builder>.
@@ -164,7 +190,7 @@ using C<Test::Builder>.
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
-=item leaked_cmp_ok { BLOCK } $op, ?$description
+=head3 leaked_cmp_ok { BLOCK } $cmp_op, ?$description
 
 Tests that I<BLOCK> leakes a specific number of SVs. This is a test
 function using C<Test::Builder>.
@@ -172,18 +198,14 @@ function using C<Test::Builder>.
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
-=back
-
 =head2 Script interface
 
 Like C<Devel::LeakTrace> C<Test::LeakTrace::Script> is provided for whole scripts.
 
-For command line:
+The arguments of C<use Test::LeakTrace::Script> directive is the same as C<leaktrace()>.
 
-	$ LEAKTRACE_VERBOSE=1 perl -MTest::LeakTrace::Script script.pl
-	$ perl -MTest::LeakTrace::Script=1 script.pl
-
-C<use Test::LeakTrace::Script> also accepts a callback function as follows.
+	$ TEST_LEAKTRACE=-sv_dump perl -MTest::LeakTrace::Script script.pl
+	$ perl -MTest::LeakTrace::Script=-verbose script.pl
 
 	#!perl
 	# ...
@@ -196,22 +218,6 @@ C<use Test::LeakTrace::Script> also accepts a callback function as follows.
 	# ...
 
 =head1 EXAMPLES
-
-=head2 Tracing circular references
-
-	#!perl-w
-	use strict;
-	use Test::LeakTrace;
-
-	leaktrace{
-		my %a;
-		my %b;
-
-		$a{b} = \%b;
-		$b{a} = \%a;
-	};
-
-	__END__
 
 =head2 Testing modules
 
@@ -250,6 +256,14 @@ L<Devel::LeakTrace::Fast>.
 L<Test::TraceObject>.
 
 L<Test::Weak>.
+
+For guts:
+
+L<perlguts>.
+
+L<perlhack>.
+
+L<sv.c>.
 
 =head1 AUTHOR
 

@@ -13,6 +13,7 @@ use ExtUtils::MakeMaker (); # a large module
 	my %hash;
 	for(1 .. 1000){
 		$hash{$_}++;
+		$hash{$_}++;
 	}
 
 	my %a;

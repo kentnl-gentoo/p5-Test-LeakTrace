@@ -1,7 +1,7 @@
 #!perl -w
 
 use strict;
-use Test::More 'no_plan'; # I cannot know the number of 'ok'
+use Test::More 'no_plan'; # I don't know the number of 'ok'
 
 use Test::LeakTrace;
 

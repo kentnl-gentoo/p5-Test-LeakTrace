@@ -8,9 +8,6 @@ use Test::LeakTrace;
 not_leaked{
 	diag "in not_leaked";
 
-	my %a;
-	my %b;
-
-	$a{b} = \%b;
-	$b{a} = \%a;
+	my @array;
+	push @array, \@array;
 };

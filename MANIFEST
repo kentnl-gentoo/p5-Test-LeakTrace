@@ -7,6 +7,7 @@ example/callback.pl
 example/leaked.pl
 example/leaktrace.t
 example/method_cache.pl
+example/simple.pl
 example/test_fail.pl
 example/weakref.pl
 inc/Module/Install.pm
@@ -35,7 +36,9 @@ t/05_script.t
 t/06_threads.t
 t/07_eval.t
 t/08_leaktrace.t
+t/09_info_more.t
 t/10_bad_use.t
+t/11_logfp.t
 xt/01_podspell.t
 xt/02_pod.t
 xt/03_pod-coverage.t

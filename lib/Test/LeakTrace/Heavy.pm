@@ -8,26 +8,37 @@ use Test::Builder;
 
 my $Test = Test::Builder->new();
 
-sub _not_leaked(&;$){
+sub _not_leaked{
 	my($block, $description) = @_;
 
-	$block->(); # allow $block to prepare cache
+	# NOTE: prepare $logfp in order not to affect the run-time environment
+	my $content = '';
+	open my $logfp, '>', \$content;
+
+	# calls to prepare cache in $block
+	$block->();
 
 	my $count = &leaked_count($block);
 
 	$Test->ok($count == 0, $description);
 
 	if($count){
-		&leaktrace($block, -verbose);
+		&leaktrace($block, -verbose, $logfp);
+		$Test->diag($content);
 	}
 
 	return $count == 0;
 }
 
-sub _leaked_cmp_ok(&$$;$){
+sub _leaked_cmp_ok{
 	my($block, $cmp_op, $expected, $description) = @_;
 
-	$block->(); # allow $block to prepare cache
+	# NOTE: prepare $logfp in order not to affect the run-time environment
+	my $content = '';
+	open my $logfp, '>', \$content;
+
+	# calls to prepare cache in $block
+	$block->();
 
 	$description ||= sprintf 'leaked count %-3s %s', $cmp_op, $expected;
 
@@ -35,7 +46,8 @@ sub _leaked_cmp_ok(&$$;$){
 	my $result =  $Test->cmp_ok($got, $cmp_op, $expected, $description);
 
 	if(!$result){
-		&leaktrace($block, -verbose);
+		&leaktrace($block, -verbose, $logfp);
+		$Test->diag($content);
 	}
 
 	return $result;

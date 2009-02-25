@@ -1,5 +1,5 @@
 #!perl -w
-# an example for standard test scripts
+# a test script template
 
 use strict;
 
@@ -8,16 +8,14 @@ use Test::More HAS_LEAKTRACE ? (tests => 1) : (skip_all => 'require Test::LeakTr
 
 use Test::LeakTrace;
 
-use Class::Monadic;
+use threads; # for example
 
 leaked_cmp_ok{
-	my $o = bless {};
 
-	Class::Monadic->initialize($o)->add_method(foo => sub{
-		my $i = 0;
+	async{
+		my $i;
 		$i++;
-	});
-	$o->foo();
+	}->join();
 
-} '<=', 1;
+} '<', 1, 'threads->create->join';
 

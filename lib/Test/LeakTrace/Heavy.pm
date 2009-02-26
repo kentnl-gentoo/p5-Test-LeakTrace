@@ -11,19 +11,19 @@ my $Test = Test::Builder->new();
 sub _not_leaked{
 	my($block, $description) = @_;
 
-	# NOTE: prepare $logfp in order not to affect the run-time environment
-	my $content = '';
-	open my $logfp, '>', \$content;
+	# NOTE: pre-open *STDERR in order not to affect the run-time environment
+	local *STDERR;
+	open *STDERR, '>', \my $content;
 
 	# calls to prepare cache in $block
 	$block->();
 
 	my $count = &leaked_count($block);
 
-	$Test->ok($count == 0, $description);
+	$Test->cmp_ok($count, '==', 0, $description);
 
 	if($count){
-		&leaktrace($block, -verbose, $logfp);
+		&leaktrace($block, -verbose);
 		$Test->diag($content);
 	}
 
@@ -33,9 +33,9 @@ sub _not_leaked{
 sub _leaked_cmp_ok{
 	my($block, $cmp_op, $expected, $description) = @_;
 
-	# NOTE: prepare $logfp in order not to affect the run-time environment
-	my $content = '';
-	open my $logfp, '>', \$content;
+	# NOTE: pre-open *STDERR in order not to affect the run-time environment
+	local *STDERR;
+	open *STDERR, '>', \my $content;
 
 	# calls to prepare cache in $block
 	$block->();
@@ -46,7 +46,7 @@ sub _leaked_cmp_ok{
 	my $result =  $Test->cmp_ok($got, $cmp_op, $expected, $description);
 
 	if(!$result){
-		&leaktrace($block, -verbose, $logfp);
+		&leaktrace($block, -verbose);
 		$Test->diag($content);
 	}
 

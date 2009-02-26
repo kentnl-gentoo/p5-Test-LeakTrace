@@ -1,5 +1,8 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.05 Thu Feb 26 15:56:34 2009
+	- add a Japanese document, Test::LeakTrace::JA
+
 0.04 Wed Feb 25 14:40:08 2009
 	- significant improvements:
 		- redefine reporting modes: -simple, -sv_dump, -lines and -verbose

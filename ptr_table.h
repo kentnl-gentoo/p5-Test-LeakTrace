@@ -2,9 +2,17 @@
 	ptr_table.h - ptr_table compatible functions for older perls
 
 	This file is originated from sv.c of 5.10.0.
+*/
 
-	This library is free software; you can redistribute it and/or modify
-	it under the same terms as Perl itself.
+/*
+ * LISENCE AND COPYRIGHT in sv.c:
+ *
+ *    Copyright (C) 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
+ *    2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, by Larry Wall and others
+ *
+ *    You may distribute under the terms of either the GNU General Public
+ *    License or the Artistic License, as specified in the README file.
+ *
 */
 
 #ifdef TESTING_PTR_TABLE_COMPAT
@@ -27,13 +35,13 @@
 #define new_body_inline(pte, type) Newx(pte, 1, PTR_TBL_ENT_t)
 #define del_pte(pte)               Safefree(pte)
 
-#define ptr_table_new()           my_ptr_table_new(aTHX)
-#define ptr_table_find(tbl, sv)   my_ptr_table_find(tbl, sv)
-#define ptr_table_fetch(tbl, key) my_ptr_table_fetch(aTHX_ tbl, key)
+#define ptr_table_new()                my_ptr_table_new(aTHX)
+#define ptr_table_find(tbl, sv)        my_ptr_table_find(aTHX_ tbl, sv)
+#define ptr_table_fetch(tbl, key)      my_ptr_table_fetch(aTHX_ tbl, key)
 #define ptr_table_store(tbl, key, val) my_ptr_table_store(aTHX_ tbl, key, val)
-#define ptr_table_split(tbl) my_ptr_table_split(aTHX_ tbl)
-#define ptr_table_clear(tbl) my_ptr_table_clear(aTHX_ tbl)
-#define ptr_table_free(tbl)  my_ptr_table_free(aTHX_ tbl)
+#define ptr_table_split(tbl)           my_ptr_table_split(aTHX_ tbl)
+#define ptr_table_clear(tbl)           my_ptr_table_clear(aTHX_ tbl)
+#define ptr_table_free(tbl)            my_ptr_table_free(aTHX_ tbl)
 
 
 #define PTR_TABLE_HASH(ptr) \
@@ -85,9 +93,11 @@ my_ptr_table_split(pTHX_ PTR_TBL_t * const tbl)
 }
 
 static PTR_TBL_ENT_t *
-my_ptr_table_find(PTR_TBL_t const * const tbl, const void * const sv) {
+my_ptr_table_find(pTHX_ PTR_TBL_t const * const tbl, const void * const sv) {
     PTR_TBL_ENT_t *tblent;
     const UV hash = PTR_TABLE_HASH(sv);
+    PERL_UNUSED_CONTEXT(aTHX);
+
     assert(tbl);
     tblent = tbl->tbl_ary[hash & tbl->tbl_max];
     for (; tblent; tblent = tblent->next) {
@@ -98,7 +108,7 @@ my_ptr_table_find(PTR_TBL_t const * const tbl, const void * const sv) {
 }
 
 static void *
-my_ptr_table_fetch(pTHX_ PTR_TBL_t * const tbl, const void * const sv)
+my_ptr_table_fetch(pTHX_ const PTR_TBL_t * const tbl, const void * const sv)
 {
     PTR_TBL_ENT_t const *const tblent = ptr_table_find(tbl, sv);
     PERL_UNUSED_CONTEXT;

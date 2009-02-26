@@ -22,16 +22,14 @@
 #define REPORT_SOURCE_LINES 0x04
 #define REPORT_SILENT       0x08
 
-#define FILENAME_SIZE 50
-
 #define MY_CXT_KEY "Test::LeakTrace::_guts" XS_VERSION
 typedef struct{
 	bool enabled;
 	bool need_stateinfo;
 
 	char* file;
-	I32   filelen;
-	I32   line;
+	int   filelen;
+	int   line;
 
 	PTR_TBL_t* usedsv_reg;
 	PTR_TBL_t* newsv_reg;
@@ -44,8 +42,8 @@ struct stateinfo{
 	SV* sv;
 
 	char* file;
-	I32   filelen;
-	I32   line;
+	int   filelen;
+	int   line;
 
 	struct stateinfo* next;
 };
@@ -101,7 +99,7 @@ set_stateinfo(pTHX_ pMY_CXT_ COP* const cop){
 	Renew(MY_CXT.file, MY_CXT.filelen+1, char);
 	Copy(file, MY_CXT.file, MY_CXT.filelen+1, char);
 
-	MY_CXT.line = CopLINE(cop);
+	MY_CXT.line = (int)CopLINE(cop);
 }
 
 static void
@@ -109,15 +107,15 @@ unmark_all(pTHX_ pMY_CXT){
 	assert(MY_CXT.newsv_reg);
 
 	if (MY_CXT.newsv_reg->tbl_items) {
-		register PTR_TBL_ENT_t * const * const array = MY_CXT.newsv_reg->tbl_ary;
+		PTR_TBL_ENT_t * const * const array = MY_CXT.newsv_reg->tbl_ary;
 		UV riter = MY_CXT.newsv_reg->tbl_max;
 
 		do {
-			PTR_TBL_ENT_t *entry = array[riter];
+			register PTR_TBL_ENT_t *entry = array[riter];
 
 			while (entry) {
 				if(SvIS_FREED(PteKey(entry))){
-					PteVal(entry)->sv = NULL;
+					PteVal(entry)->sv = NULL; /* unmark */
 				}
 
 				entry = entry->next;
@@ -140,7 +138,8 @@ mark_all(pTHX_ pMY_CXT){
 
 			if(si){
 				if(si->sv){
-					continue; /* already marked */
+					/* already marked */
+					continue;
 				}
 				/* unmarked */
 			}
@@ -149,7 +148,7 @@ mark_all(pTHX_ pMY_CXT){
 				Newxz(si, 1, struct stateinfo);
 				ptr_table_store(MY_CXT.newsv_reg, sv, si);
 			}
-			si->sv   = sv;
+			si->sv   = sv; /* mark */
 
 			if(MY_CXT.need_stateinfo){
 				Renew(si->file, MY_CXT.filelen+1, char);
@@ -200,8 +199,7 @@ callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
 		dSP;
 		I32 n;
 
-		if(SvIS_FREED(leaked->sv)){
-			/* NOTE: it is possible when the callback releases some SVs. */
+		if(SvIS_FREED(leaked->sv)){ /* NOTE: it is possible when the callback releases some SVs. */
 			leaked = leaked->next;
 			continue;
 		}
@@ -211,13 +209,11 @@ callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
 
 		PUSHMARK(SP);
 
+		EXTEND(SP, 3);
 		mXPUSHs(newRV_inc(leaked->sv));
 
-		if(leaked->filelen){
-			EXTEND(SP, 2);
-			mPUSHp(leaked->file, leaked->filelen);
-			mPUSHi(leaked->line);
-		}
+		mPUSHp(leaked->file, leaked->filelen);
+		mPUSHi(leaked->line);
 
 		PUTBACK;
 
@@ -256,14 +252,11 @@ print_lines_around(pTHX_ PerlIO* const ofp, const char* const file, int const li
 }
 
 static void
-report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode, PerlIO* logfp){
+report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode){
+	PerlIO* const logfp = Perl_error_log;
 
 	if(reporting_mode & REPORT_SILENT){
 		return;
-	}
-
-	if(!logfp){
-		logfp = Perl_error_log;
 	}
 
 	if(reporting_mode & REPORT_SOURCE_LINES){
@@ -288,9 +281,9 @@ report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode, Per
 			PerlIO_printf(logfp, "leaked %s(0x%p) from %s line %d.\n",
 				sv_reftype(leaked->sv, FALSE),
 				leaked->sv,
-				leaked->file, (int)leaked->line);
+				leaked->file, leaked->line);
 
-			if(leaked->line && reporting_mode & REPORT_SOURCE_LINES){
+			if(leaked->line && (reporting_mode & REPORT_SOURCE_LINES)){
 				print_lines_around(aTHX_ logfp, leaked->file, leaked->line);
 			}
 		}
@@ -362,15 +355,16 @@ CODE:
 	} END_VISIT;
 
 void
-_finish(SV* mode = &PL_sv_undef, SV* logfp = &PL_sv_undef)
+_finish(SV* mode = &PL_sv_undef)
 PREINIT:
-	I32 gimme = GIMME_V;
 	dMY_CXT;
-	IV count = 0;
-	struct stateinfo* volatile leaked = NULL; /* volatile to pass -Wuninitialized (longjmp) */
-	SV* volatile callback = NULL;
-	SV* volatile invalid_mode = NULL;
+	I32 const gimme    = GIMME_V;
 	int reporting_mode = REPORT_DISABLED;
+	IV count           = 0;
+	/* volatile to pass -Wuninitialized (longjmp) */
+	struct stateinfo* volatile leaked = NULL;
+	SV* volatile callback             = NULL;
+	SV* volatile invalid_mode         = NULL;
 PPCODE:
 	if(!MY_CXT.enabled){
 		Perl_warn(aTHX_ "LeakTrace not started");
@@ -443,8 +437,7 @@ PPCODE:
 			}
 		}
 		else{
-			report_each_leaked(aTHX_ leaked, reporting_mode,
-				SvOK(logfp) ? IoOFP(sv_2io(logfp)) : NULL);
+			report_each_leaked(aTHX_ leaked, reporting_mode);
 		}
 	}
 	else if(gimme == G_SCALAR){
@@ -462,7 +455,7 @@ PPCODE:
 
 				av_push(av, sv);
 				av_push(av, newSVpvn(leaked->file, leaked->filelen));
-				av_push(av, newSVuv(leaked->line));
+				av_push(av, newSViv(leaked->line));
 				sv = newRV_noinc((SV*)av);
 			}
 			mPUSHs(sv);

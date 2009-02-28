@@ -2,51 +2,28 @@ package Test::LeakTrace::Heavy;
 
 use strict;
 use warnings;
-use Test::LeakTrace qw(leaktrace leaked_count leaked_info);
+use Test::LeakTrace ();
 
 use Test::Builder;
 
 my $Test = Test::Builder->new();
 
-sub _not_leaked{
-	my($block, $description) = @_;
-
-	# NOTE: pre-open *STDERR in order not to affect the run-time environment
-	local *STDERR;
-	open *STDERR, '>', \my $content;
-
-	# calls to prepare cache in $block
-	$block->();
-
-	my $count = &leaked_count($block);
-
-	$Test->cmp_ok($count, '==', 0, $description);
-
-	if($count){
-		&leaktrace($block, -verbose);
-		$Test->diag($content);
-	}
-
-	return $count == 0;
-}
-
-sub _leaked_cmp_ok{
+sub _leaks_cmp_ok{
 	my($block, $cmp_op, $expected, $description) = @_;
 
-	# NOTE: pre-open *STDERR in order not to affect the run-time environment
-	local *STDERR;
-	open *STDERR, '>', \my $content;
-
 	# calls to prepare cache in $block
 	$block->();
 
-	$description ||= sprintf 'leaked count %-3s %s', $cmp_op, $expected;
+	$description ||= sprintf 'the number of leaks %-2s %s', $cmp_op, $expected;
 
-	my $got = &leaked_count($block);
-	my $result =  $Test->cmp_ok($got, $cmp_op, $expected, $description);
+	my $got    = &Test::LeakTrace::leaked_count($block);
+	my $result = $Test->cmp_ok($got, $cmp_op, $expected, $description);
 
 	if(!$result){
-		&leaktrace($block, -verbose);
+		open local(*STDERR), '>', \(my $content = '');
+		$block->(); # re-call it because open *STDERR changes the run-time environment
+
+		&Test::LeakTrace::leaktrace($block, -verbose);
 		$Test->diag($content);
 	}
 
@@ -64,6 +41,8 @@ Test::LeakTrace::Heavy - Test::LeakTrace guts
 =head1 DESCRIPTION
 
 This module implements test commands for C<Test::LeakTrace>.
+
+Seek L<Test::LeakTrace>.
 
 =cut
 

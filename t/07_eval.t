@@ -6,7 +6,7 @@ use Test::More tests => 6;
 use Test::LeakTrace;
 
 for(1 .. 2){
-	leaked_cmp_ok{
+	leaks_cmp_ok{
 		eval q{
 			my %a = (foo => 42);
 			my %b = (bar => 3.14);

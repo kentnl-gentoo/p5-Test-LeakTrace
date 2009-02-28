@@ -5,7 +5,7 @@ our $t;
 BEGIN{	$t = time(); }
 END{	printf "spent %.02f sec.\n", time() - $t; }
 
-use Test::LeakTrace::Script;
+use Test::LeakTrace::Script @ARGV;
 
 use ExtUtils::MakeMaker (); # a large module
 

@@ -95,11 +95,10 @@ my_ptr_table_split(pTHX_ PTR_TBL_t * const tbl)
 static PTR_TBL_ENT_t *
 my_ptr_table_find(pTHX_ PTR_TBL_t const * const tbl, const void * const sv) {
     PTR_TBL_ENT_t *tblent;
-    const UV hash = PTR_TABLE_HASH(sv);
-    PERL_UNUSED_CONTEXT(aTHX);
+    PERL_UNUSED_CONTEXT;
 
     assert(tbl);
-    tblent = tbl->tbl_ary[hash & tbl->tbl_max];
+    tblent = tbl->tbl_ary[PTR_TABLE_HASH(sv) & tbl->tbl_max];
     for (; tblent; tblent = tblent->next) {
 	if (tblent->oldval == sv)
 	    return tblent;
@@ -119,7 +118,6 @@ static void
 my_ptr_table_store(pTHX_ PTR_TBL_t * const tbl, const void * const oldsv, void * const newsv)
 {
     PTR_TBL_ENT_t *tblent = ptr_table_find(tbl, oldsv);
-    PERL_UNUSED_CONTEXT;
 
     if (tblent) {
 	tblent->newval = newsv;
@@ -144,7 +142,7 @@ my_ptr_table_clear(pTHX_ PTR_TBL_t * const tbl)
 {
     assert(tbl);
     if (tbl->tbl_items) {
-	register PTR_TBL_ENT_t * const * const array = tbl->tbl_ary;
+	PTR_TBL_ENT_t * const * const array = tbl->tbl_ary;
 	UV riter = tbl->tbl_max;
 
 	do {

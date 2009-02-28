@@ -7,7 +7,7 @@ use Test::More;
 
 BEGIN{
 	if(HAS_THREADS){
-		plan tests => 5;
+		plan tests => 6;
 	}
 	else{
 		plan skip_all => 'require threads';
@@ -17,7 +17,7 @@ BEGIN{
 use threads;
 use Test::LeakTrace;
 
-leaked_cmp_ok{
+leaks_cmp_ok{
 	async{
 		my $a = 0;
 		$a++;
@@ -26,12 +26,12 @@ leaked_cmp_ok{
 
 my $count = leaked_count {
 	async{
-		leaked_cmp_ok{
+		leaks_cmp_ok{
 			my $a;
 			$a = \$a;
 		} '>', 0;
 
-		not_leaked{
+		no_leaks_ok{
 			my $a;
 			$a++;
 		};
@@ -40,7 +40,11 @@ my $count = leaked_count {
 cmp_ok $count, '<', 10, "(actually leaked: $count)";
 
 async{
-	not_leaked{
+	no_leaks_ok{
+		my $a = 0;
+		$a++;
+	};
+	no_leaks_ok{
 		my $a = 0;
 		$a++;
 	};

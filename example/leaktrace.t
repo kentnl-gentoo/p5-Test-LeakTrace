@@ -10,12 +10,14 @@ use Test::LeakTrace;
 
 use threads; # for example
 
-leaked_cmp_ok{
+leaks_cmp_ok{
 
-	async{
+	my $thr = async{
 		my $i;
 		$i++;
-	}->join();
+	};
+
+	$thr->join();
 
 } '<', 1, 'threads->create->join';
 

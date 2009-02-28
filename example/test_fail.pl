@@ -5,7 +5,7 @@ use strict;
 use Test::More tests => 1;
 use Test::LeakTrace;
 
-not_leaked{
+no_leaks_ok{
 	diag "in not_leaked";
 
 	my @array;

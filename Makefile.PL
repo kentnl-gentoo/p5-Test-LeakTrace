@@ -12,6 +12,10 @@ requires 'Test::More' => 0.62;
 tests 't/*.t';
 author_tests 'xt';
 
+if($Module::Install::AUTHOR){
+	makemaker_args(DEFINE => '-DTESTING_PTR_TABLE_COMPAT');
+}
+
 WriteMakefile(
 	OBJECT => '$(O_FILES)',
 

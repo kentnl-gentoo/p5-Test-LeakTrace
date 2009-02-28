@@ -3,11 +3,11 @@
 
 =head1 NAME
 
-Test::LeakTrace - メモリリークを追跡する
+Test::LeakTrace::JA - メモリリークを追跡する
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.05.
+This document describes Test::LeakTrace version 0.06.
 
 =head1 SYNOPSIS
 
@@ -45,11 +45,11 @@ This document describes Test::LeakTrace version 0.05.
 	# standard test interface
 	use Test::LeakTrace;
 
-	not_leaked{
+	no_leaks_ok{
 		# ...
 	} "description";
 
-	leaked_cmp_ok{
+	leaks_cmp_ok{
 		# ...
 	} '<', 10;
 
@@ -60,6 +60,8 @@ PerlのGCはリファレンスカウンタを用いたものなので，オブ�
 
 C<Test::LeakTrce>はメモリリークを追跡するためのいくつかのユーティリティとC<Test::Builder>ベースのテスト関数を提供します。このモジュールはPerlのメモリアロケーションシステムであるアリーナを走査するため，SVに関することであれば与えられたコードのどんなメモリリークでも検出できます。つまり，Perlレベルでの循環参照を始めとして，XSモジュールやPerl自身のバグによるメモリリークを追跡することができます。
 
+ここでB<リーク>とは，特定のスコープ内で新たに作成されて，そのスコープ終了後にも残っている値を意味します。これは，新たに作成されたグローバルな値やPerlが暗黙のうちに作成するキャッシュの値も含みます。たとえば，リーク追跡を行っている最中に新たに名前つきサブルーチンを定義すれば，それはリークとみなされます。また，継承したメソッドを呼び出したり，オブジェクトを作成したりするだけで様々なキャッシュが生成され，リークが報告される可能性があります。
+
 =head1 INTERFACE
 
 =head2 Exported functions
@@ -67,11 +69,9 @@ C<Test::LeakTrce>はメモリリークを追跡するためのいくつかのユ
 =head3 leaked_info { BLOCK }
 
 I<BLOCK>を実行し，追跡結果をリストで返します。
-結果はリークした値のリファレンス，ファイル名，行番号の三要素を持つ配列(つまりC<< [$ref, $file, $line] >>)のリストとなっています。
+結果はリークした値のリファレンス，ファイル名，行番号の三要素を持つ配列，つまりC<< [$ref, $file, $line] >>のリストとなっています。
 
-ここでB<リーク>とは，I<BLOCK>内で新たに作成されて実行後にも残っている値を意味します。これは，新たに定義されたグローバルな値やPerlが暗黙のうちに作成するキャッシュの値も含みます。たとえば，I<BLOCK>内で新たに名前つきサブルーチンを定義すれば，それはリークとみなされます。また，継承したメソッドを呼び出したり，オブジェクトを作成したりするだけで様々なキャッシュが生成され，リークが報告される可能性があります。
-
-なお，この関数はPerl内部で使用する値を返す可能性があるということに注意してください。そのような内部用の値を変更するとPerl実行環境に致命的な影響を与える可能性があります。また，配列やハッシュの要素として，リファレンスではない配列やハッシュそれ自体が含まれる可能性があります。そのような値は通常Perlレベルで操作することができません。たとえばC<Data::Dumper>などで出力することはできません。
+なお，この関数はPerl内部で使用する値を返す可能性があります。そのような内部用の値を変更するとPerl実行環境に致命的な影響を与える可能性があるので注意してください。また，配列やハッシュの要素として，リファレンスではない配列やハッシュそれ自体が含まれる可能性があります。そのような値は通常Perlレベルで操作することができません。たとえばC<Data::Dumper>などで出力することはできません。
 
 =head3 leaked_refs { BLOCK }
 
@@ -115,16 +115,16 @@ B<-simple>とB<-sv_dump>とB<-lines>の全てを出力します。
 =back
 
 より細かな制御のためにコールバックを指定することもできます。
-I<\&callback>はリークしたSV毎に呼び出され，引数はリークしたSVのリファレンス，ファイル名，行番号の3つです。
+I<\&callback>はリークしたSV毎に呼び出され，その引数はリークしたSVのリファレンス，ファイル名，行番号の3つです。
 
-=head3 not_leaked { BLOCK } ?$description
+=head3 no_leaks_ok { BLOCK } ?$description
 
 I<BLOCK>にメモリリークがないことテストします。
 これはC<Test::Builder>ベースのテスト関数です。
 
 なお，I<BLOCK>は複数回実行されます。これは，初回の実行でキャッシュを用意する可能性を考慮するためです。
 
-=head3 leaked_cmp_ok { BLOCK } $cmp_op, $count, ?$description
+=head3 leaks_cmp_ok { BLOCK } $cmp_op, $count, ?$description
 
 I<BLOCK>のメモリリーク数と特定の数値を比較するテストを行います。
 これはC<Test::Builder>ベースのテスト関数です。
@@ -133,7 +133,7 @@ I<BLOCK>のメモリリーク数と特定の数値を比較するテストを行
 
 =head2 Script interface
 
-C<Devel::LeakTrace>と同様に，スクリプトの追跡のためにC<Test::LeakTrace::Script>が提供されます。C<use Test::LeakTrace::Script>宣言の引数はC<leaktrace()>と同じです。
+C<Devel::LeakTrace>と同様に，スクリプトのリーク追跡のためにC<Test::LeakTrace::Script>が提供されます。C<use Test::LeakTrace::Script>宣言の引数はC<leaktrace()>と同じです。
 
 	$ TEST_LEAKTRACE=-sv_dump perl -MTest::LeakTrace::Script script.pl
 	$ perl -MTest::LeakTrace::Script=-verbose script.pl
@@ -162,7 +162,7 @@ C<Devel::LeakTrace>と同様に，スクリプトの追跡のためにC<Test::Le
 
 	use Some::Module;
 
-	leaked_cmp_ok{
+	leaks_cmp_ok{
 		my $o = Some::Module->new();
 		$o->something();
 		$o->something_else();
@@ -192,9 +192,9 @@ C<Test::LeakTrace>はアリーナを走査します。アリーナとは，Perl�
 
 リークしたSVを得るだけならこの方法で十分です。実際，C<leaked_refs()>とC<leaked_count()>はこのような方法でリークしたSVやその個数を調べています。
 
-しかし，リークしたSVのファイル名や行番号を得るためにはこれだけでは不十分です。Perl 5.10以降には，Perlのビルド時にコンパイルオプションのC<DEBUG_LEAKING_SCALARS>を有効にすることでSVが作成されたときのファイル名などを追跡する機能があるのですが，この機能を利用するためにはPerlの再ビルドが必要です。
+しかし，リークしたSVのステートメントの情報，つまりファイル名や行番号を得るためにはこれだけでは不十分です。Perl 5.10以降には，SVが作成されたときのステートメント情報を追跡する機能があるのですが，この機能を利用するためには，コンパイラオプションとしてにC<-DDEBUG_LEAKING_SCALARS>を与えてPerlをビルドしなければなりません。
 
-そこで，C<Test::LeakTrace>は拡張可能なC<PL_runops>を利用して，Perl VMがOPコードを実行する1ステートメント毎にアリーナを走査し，ファイル名や行番号を記録します。これは，1ステートメント毎にマーク＆スイープのような処理を行うのに等しく，非常に時間が掛かります。しかし，Perlを特殊な条件の下でビルドする必要もなく，バージョンに依存した機能もほとんど使用しないため，多くの環境で動かすことができます。
+そこで，C<Test::LeakTrace>では拡張可能なC<PL_runops>を利用して，Perl VMがOPコードを実行する1ステートメント毎にアリーナを走査し，ステートメント情報を記録します。これは，1ステートメント毎にマーク＆スイープのような処理を行うのに等しく，非常に時間が掛かります。しかし，Perlを特殊な条件の下でビルドする必要もなく，バージョンに依存した機能もほとんど使用しないため，多くの環境で動かすことができます。
 
 また，C<not_leakd()>のようなテスト関数はまずC<leaked_count()>でリークしたSVの個数を得てから，必要に応じてリークした位置を特定するためにC<leaktrace()>を実行するため，テストが成功する限りは時間の掛かる追跡処理はしません。
 

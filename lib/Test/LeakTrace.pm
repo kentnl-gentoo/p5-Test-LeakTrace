@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -13,24 +13,33 @@ XSLoader::load(__PACKAGE__, $VERSION);
 use Exporter qw(import);
 our @EXPORT = qw(
 	leaktrace leaked_refs leaked_info leaked_count
-	not_leaked leaked_cmp_ok
+	no_leaks_ok leaks_cmp_ok
 );
 
 our %EXPORT_TAGS = (
 	all  => \@EXPORT,
-	test => [qw(not_leaked leaked_cmp_ok)],
+	test => [qw(no_leaks_ok leaks_cmp_ok)],
 	util => [qw(leaktrace leaked_refs leaked_info leaked_count)],
 );
 
-sub not_leaked(&;$){
-	require Test::LeakTrace::Heavy;
-
-	goto \&Test::LeakTrace::Heavy::_not_leaked;
+BEGIN{
+	# for backwords compatibility (< 0.06)
+	# they will been removed at 0.10
+	*not_leaked    = \&no_leaks_ok;
+	*leaked_cmp_ok = \&leaks_cmp_ok;
+	push @EXPORT, qw(not_leaked leaked_cmp_ok);
 }
-sub leaked_cmp_ok(&$$;$){
-	require Test::LeakTrace::Heavy;
 
-	goto &Test::LeakTrace::Heavy::_leaked_cmp_ok;
+sub no_leaks_ok(&;$){
+	# ($block, $description)
+	require Test::LeakTrace::Heavy;
+	splice @_, 1, 0, ('==', 0); # ($block, '==', 0, $description);
+	goto &Test::LeakTrace::Heavy::_leaks_cmp_ok;
+}
+sub leaks_cmp_ok(&$$;$){
+	# ($block, $cmp_op, $number, $description);
+	require Test::LeakTrace::Heavy;
+	goto &Test::LeakTrace::Heavy::_leaks_cmp_ok;
 }
 
 sub _do_leaktrace{
@@ -40,18 +49,15 @@ sub _do_leaktrace{
 		Carp::croak("Useless use of $name() in void context");
 	}
 
-	{
-		local $SIG{__DIE__} = 'DEFAULT';
+	local $SIG{__DIE__} = 'DEFAULT';
 
-		_start($need_stateinfo);
-
-		eval{
-			$block->();
-		};
-		if($@){
-			_finish(-silent);
-			die $@;
-		}
+	_start($need_stateinfo);
+	eval{
+		$block->();
+	};
+	if($@){
+		_finish(-silent);
+		die $@;
 	}
 
 	return _finish($mode);
@@ -90,7 +96,7 @@ Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.05.
+This document describes Test::LeakTrace version 0.06.
 
 =head1 SYNOPSIS
 
@@ -128,11 +134,11 @@ This document describes Test::LeakTrace version 0.05.
 	# standard test interface
 	use Test::LeakTrace;
 
-	not_leaked{
+	no_leaks_ok{
 		# ...
-	} "description";
+	} 'no memory leaks';
 
-	leaked_cmp_ok{
+	leaks_cmp_ok{
 		# ...
 	} '<', 10;
 
@@ -142,7 +148,11 @@ C<Test::LeakTrace> provides several functions that trace memory leaks.
 This module scans arenas, the memory allocation system,
 so it can detect any leaked SVs in given blocks.
 
-TODO: writeing the document
+B<Leaked SVs> are SVs which are not released after the end of the scope
+they have been created. These SVs include global variables and internal caches.
+For example, if you call a method in a tracing block, perl might prepare a cache
+for the method. Thus, to trace true leaks, C<no_leaks_ok()> and C<leaks_cmp_ok()>
+executes a block more than once.
 
 =head1 INTERFACE
 
@@ -150,7 +160,8 @@ TODO: writeing the document
 
 =head3 leaked_info { BLOCK }
 
-Executes I<BLOCK> and returns a list of leaked SVs and places where the SVs come from.
+Executes I<BLOCK> and returns a list of leaked SVs and places where the SVs
+come from, i.e. C<< [$ref, $file, $line] >>.
 
 =head3 leaked_refs { BLOCK }
 
@@ -187,7 +198,7 @@ Both B<-sv_dump> and B<-lines>.
 
 =back
 
-=head3 not_leaked { BLOCK } ?$description
+=head3 no_leaks_ok { BLOCK } ?$description
 
 Tests that I<BLOCK> does not leaks SVs. This is a test function
 using C<Test::Builder>.
@@ -195,7 +206,7 @@ using C<Test::Builder>.
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
-=head3 leaked_cmp_ok { BLOCK } $cmp_op, $number, ?$description
+=head3 leaks_cmp_ok { BLOCK } $cmp_op, $number, ?$description
 
 Tests that I<BLOCK> leakes a specific number of SVs. This is a test
 function using C<Test::Builder>.
@@ -236,7 +247,7 @@ Here is a test script template that checks memory leaks.
 
 	use Some::Module;
 
-	leaked_cmp_ok{
+	leaks_cmp_ok{
 		my $o = Some::Module->new();
 		$o->something();
 		$o->something_else();

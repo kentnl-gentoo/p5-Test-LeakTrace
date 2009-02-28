@@ -255,10 +255,6 @@ static void
 report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode){
 	PerlIO* const logfp = Perl_error_log;
 
-	if(reporting_mode & REPORT_SILENT){
-		return;
-	}
-
 	if(reporting_mode & REPORT_SOURCE_LINES){
 		ENTER;
 		SAVETMPS;
@@ -321,6 +317,7 @@ BOOT:
 	MY_CXT.enabled        = FALSE;
 	MY_CXT.need_stateinfo = FALSE;
 	PL_runops             = leaktrace_runops;
+	set_stateinfo(aTHX_ aMY_CXT_ PL_curcop); /* only to prevent core dumps with Devel::Cover */
 }
 
 void
@@ -436,7 +433,7 @@ PPCODE:
 				XCPT_RETHROW;
 			}
 		}
-		else{
+		else if(!(reporting_mode & REPORT_SILENT)){
 			report_each_leaked(aTHX_ leaked, reporting_mode);
 		}
 	}
@@ -446,9 +443,7 @@ PPCODE:
 	else if(gimme == G_ARRAY){
 		EXTEND(SP, count);
 		while(leaked){
-			SV* sv;
-
-			sv = newRV_inc(leaked->sv);
+			SV* sv = newRV_inc(leaked->sv);
 
 			if(leaked->filelen){
 				AV* const av = newAV();

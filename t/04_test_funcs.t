@@ -12,7 +12,7 @@ use Test::LeakTrace qw(:test);
 	}
 }
 
-not_leaked {
+no_leaks_ok {
 	my %a;
 	my %b;
 
@@ -20,16 +20,16 @@ not_leaked {
 	$b{a} = 2;
 } 'not leaked';
 
-not_leaked{
+no_leaks_ok{
 	my $o = Foo->new();
 	$o->{bar}++;
 };
 
-not_leaked{
+no_leaks_ok{
 	# empty
 };
 
-leaked_cmp_ok{
+leaks_cmp_ok{
 	my $a;
 	$a++;
 } '==', 0;
@@ -42,8 +42,8 @@ sub leaked{
 	$b{a} = \%a;
 }
 
-leaked_cmp_ok \&leaked, '<',  10;
-leaked_cmp_ok \&leaked, '<=', 10;
-leaked_cmp_ok \&leaked, '>',   0;
-leaked_cmp_ok \&leaked, '>=',  1;
+leaks_cmp_ok \&leaked, '<',  10;
+leaks_cmp_ok \&leaked, '<=', 10;
+leaks_cmp_ok \&leaked, '>',   0;
+leaks_cmp_ok \&leaked, '>=',  1;
 

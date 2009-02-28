@@ -1,5 +1,14 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.06 Sat Feb 28 13:20:13 2009
+	- rename test functions
+		- not_leaked()    to no_leaks_ok()
+		- leaked_cmp_ok() to leaks_cmp_ok()
+	- fix ptr_table.h (and now it is automatically tested)
+	- fix the title of Test::LeakTrace::JA
+	- fix some bugs
+	- internal cleanup
+
 0.05 Thu Feb 26 15:56:34 2009
 	- add a Japanese document, Test::LeakTrace::JA
 

@@ -1,19 +1,34 @@
 #!perl -w
 
 use strict;
-use Test::LeakTrace::Script -verbose;
+use Test::More tests => 1;
+use Test::LeakTrace qw(:test);
 
-use Scalar::Util qw(weaken);
 
 {
-	my %a;
-	my %b;
+	package X;
+	use Scalar::Util qw(weaken);
 
-	$a{b} = \%b;
-	$b{a} = \%a;
+	sub new{
+		my($class) = @_;
 
-	weaken $a{b};
-	weaken $b{a};
+		my $self = bless {}, $class;
+
+		return $self;
+	}
+
+	sub set_other{
+		my($self, $other) = @_;
+		weaken($self->{other} = $other) if $other;
+		return $self;
+	}
 }
 
-print "done.\n";
+no_leaks_ok{
+	my $a = X->new;
+	my $b = X->new;
+
+	$a->set_other($b);
+	$b->set_other($a);
+
+};

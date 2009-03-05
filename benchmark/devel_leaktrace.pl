@@ -1,9 +1,9 @@
 #!perl -w
 use strict;
-use Time::HiRes qw(time);
+use Benchmark qw();
 our $t;
-BEGIN{	$t = time(); }
-END{	printf "spent %.02f sec.\n", time() - $t; }
+BEGIN{	$t = Benchmark->new; }
+END{	print 'time: ', Benchmark->new->timediff($t)->timestr, "\n"; }
 
 use Devel::LeakTrace;
 

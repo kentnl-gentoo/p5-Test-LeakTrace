@@ -19,9 +19,9 @@ is_deeply \@refs, [ [] ];
 	$a{b} = \%b;
 };
 
-cmp_ok(scalar(@refs), '>', 1) or do{
+cmp_ok(scalar(@refs), '>=', 2) or do{
 	require Data::Dumper;
 	diag(Data::Dumper->Dump([\@refs], ['*refs']));
 };
 
-cmp_ok scalar(grep{ ref($_) eq 'HASH' } @refs), '>=', 2;
+cmp_ok scalar(grep{ ref($_) eq 'REF' && ref(${$_}) eq 'HASH' } @refs), '>=', 2;

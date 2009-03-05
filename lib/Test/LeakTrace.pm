@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -22,13 +22,18 @@ our %EXPORT_TAGS = (
 	util => [qw(leaktrace leaked_refs leaked_info leaked_count)],
 );
 
-BEGIN{
-	# for backwords compatibility (< 0.06)
-	# they will been removed at 0.10
-	*not_leaked    = \&no_leaks_ok;
-	*leaked_cmp_ok = \&leaks_cmp_ok;
-	push @EXPORT, qw(not_leaked leaked_cmp_ok);
+# for backwords compatibility (< 0.06)
+# they will been removed at 0.10
+sub not_leaked{
+	warnings::warnif deprecated => 'not_leaked() is deprecated. Use no_leaks_ok() instead.';
+	goto &no_leaks_ok;
 }
+sub leaked_cmp_ok{
+	warnings::warnif deprecated => 'leaked_cmp_ok() is deprecated. Use leaks_cmp_ok() instead.';
+	goto &leaks_cmp_ok;
+}
+push @EXPORT, qw(not_leaked leaked_cmp_ok);
+
 
 sub no_leaks_ok(&;$){
 	# ($block, $description)
@@ -96,7 +101,7 @@ Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.06.
+This document describes Test::LeakTrace version 0.07.
 
 =head1 SYNOPSIS
 

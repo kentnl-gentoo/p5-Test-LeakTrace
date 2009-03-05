@@ -27,8 +27,8 @@ leaks_cmp_ok{
 my $count = leaked_count {
 	async{
 		leaks_cmp_ok{
-			my $a;
-			$a = \$a;
+			my @a;
+			push @a, \@a;
 		} '>', 0;
 
 		no_leaks_ok{

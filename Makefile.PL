@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 use inc::Module::Install;
-use Config;
 
 name 'Test-LeakTrace';
 all_from 'lib/Test/LeakTrace.pm';

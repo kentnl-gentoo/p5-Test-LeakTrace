@@ -31,18 +31,26 @@ Test::LeakTrace::Script - A LeakTrace interface for whole scripts
 
 =head1 SYNOPSIS
 
-	$ perl -MTest::LeakTrace::Script script.pl
-
-	$ perl -MTest::LeakTrace::Script=-verbose script.pl
-
-	$ TEST_LEAKTRACE=-lines script.pl
-
-	#!perl
+	#!perl -w
 	use Test::LeakTrace::Script sub{
 		my($svref, $file, $line) = @_;
 
 		warn "leaked $svref from $file line $line.\n";
 	};
+
+=head1 DESCRIPTION
+
+This is a interface to C<Test::LeakTrace> for whole scripts.
+
+=head1 INTERFACE
+
+=head2 Command line interface
+
+	$ perl -MTest::LeakTrace::Script script.pl
+
+	$ perl -MTest::LeakTrace::Script=-verbose script.pl
+
+	$ TEST_LEAKTRACE=-lines script.pl
 
 =head1 ENVIRONMENT VARIABLES
 
@@ -55,6 +63,10 @@ Test::LeakTrace::Script - A LeakTrace interface for whole scripts
 =head3 -lines
 
 =head3 -verbose
+
+=head1 SEE ALSO
+
+L<Test::LeakTrace>.
 
 =cut
 

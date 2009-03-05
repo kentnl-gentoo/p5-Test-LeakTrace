@@ -13,8 +13,14 @@
 #define SvIS_FREED(sv) (SvFLAGS(sv) == SVTYPEMASK)
 #endif
 
+#ifdef SvPADSTALE
+#define IS_FREED(sv) (SvIS_FREED(sv) || SvPADSTALE(sv))
+#else
+#define IS_FREED(sv) SvIS_FREED(sv)
+#endif
+
 #define PteKey(pte) ((SV*)pte->oldval)
-#define PteVal(pte) ((struct stateinfo*)pte->newval)
+#define PteVal(pte) ((stateinfo*)pte->newval)
 
 #define REPORT_DISABLED     0x00
 #define REPORT_ENABLED      0x01
@@ -37,7 +43,7 @@ typedef struct{
 } my_cxt_t;
 START_MY_CXT;
 
-struct stateinfo;
+typedef struct stateinfo stateinfo;
 struct stateinfo{
 	SV* sv;
 
@@ -45,46 +51,55 @@ struct stateinfo{
 	int   filelen;
 	int   line;
 
-	struct stateinfo* next;
+	stateinfo* next;
 };
 
-#define ptr_table_free_val(tbl) my_ptr_table_free_val(aTHX_ tbl)
-static void
-my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
-	assert(tbl);
-	if (tbl->tbl_items) {
-		PTR_TBL_ENT_t * const * const array = tbl->tbl_ary;
-		UV riter = tbl->tbl_max;
-
-		do {
-			register PTR_TBL_ENT_t *entry = array[riter];
-
-			while (entry) {
-				Safefree(PteVal(entry)->file);
-				Safefree(entry->newval);
-				entry->newval = NULL;
-
-				entry = entry->next;
-			}
-		} while (riter--);
-	}
-}
-
-/* START_VISIT and END_VISIT macros are originated from S_visit() in sv.c.
+/* START_ARENA_VISIT and END_ARENA_VISIT macros are originated from S_visit() in sv.c.
    They are used to scan the sv arena.
 */
-#define START_VISIT STMT_START{                                  \
+#define START_ARENA_VISIT STMT_START{                            \
 	SV* sva;                                                 \
 	for(sva = PL_sv_arenaroot; sva; sva = (SV*)SvANY(sva)){  \
 		const SV * const svend = &sva[SvREFCNT(sva)];    \
 		register SV* sv;                                 \
 		for(sv = sva + 1; sv < svend; ++sv){             \
-			if (!SvIS_FREED(sv))
+			if (!IS_FREED(sv))
 
-#define END_VISIT                  \
+#define END_ARENA_VISIT            \
 		} /* end for(1) */ \
 	} /* end for(2) */         \
 	} STMT_END
+
+
+/* START_PTR_TABLE_VISIT and END_PTR_TABLE_VISIT macros are originatred from ptr_table_clear() in sv.c */
+#define START_PTR_TABLE_VISIT(tbl) STMT_START{                      \
+	assert(tbl);                                                \
+	if (tbl->tbl_items) {                                       \
+		PTR_TBL_ENT_t * const * const array = tbl->tbl_ary; \
+		UV riter = tbl->tbl_max;                            \
+		do {                                                \
+			register PTR_TBL_ENT_t *pte = array[riter]; \
+			while (pte) {                               \
+				STMT_START
+
+#define END_PTR_TABLE_VISIT                      \
+				STMT_END;        \
+				pte = pte->next; \
+			}                        \
+		} while (riter--);               \
+	} /* end if(ptr_table->tbl_items) */     \
+	} STMT_END
+
+
+#define ptr_table_free_val(tbl) my_ptr_table_free_val(aTHX_ tbl)
+static void
+my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
+	START_PTR_TABLE_VISIT(tbl) {
+		Safefree(PteVal(pte)->file);
+		Safefree(pte->newval);
+		pte->newval = NULL;
+	} END_PTR_TABLE_VISIT;
+}
 
 
 static void
@@ -104,24 +119,11 @@ set_stateinfo(pTHX_ pMY_CXT_ COP* const cop){
 
 static void
 unmark_all(pTHX_ pMY_CXT){
-	assert(MY_CXT.newsv_reg);
-
-	if (MY_CXT.newsv_reg->tbl_items) {
-		PTR_TBL_ENT_t * const * const array = MY_CXT.newsv_reg->tbl_ary;
-		UV riter = MY_CXT.newsv_reg->tbl_max;
-
-		do {
-			register PTR_TBL_ENT_t *entry = array[riter];
-
-			while (entry) {
-				if(SvIS_FREED(PteKey(entry))){
-					PteVal(entry)->sv = NULL; /* unmark */
-				}
-
-				entry = entry->next;
-			}
-		} while (riter--);
-	}
+	START_PTR_TABLE_VISIT(MY_CXT.newsv_reg) {
+		if(IS_FREED(PteKey(pte))){
+			PteVal(pte)->sv = NULL; /* unmark */
+		}
+	} END_PTR_TABLE_VISIT;
 }
 
 static void
@@ -132,9 +134,9 @@ mark_all(pTHX_ pMY_CXT){
 	unmark_all(aTHX_ aMY_CXT);
 
 	/* mark SVs as "new" with statement info */
-	START_VISIT {
+	START_ARENA_VISIT {
 		if(!ptr_table_fetch(MY_CXT.usedsv_reg, sv)){
-			struct stateinfo* si = (struct stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
+			stateinfo* si = (stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
 
 			if(si){
 				if(si->sv){
@@ -145,9 +147,10 @@ mark_all(pTHX_ pMY_CXT){
 			}
 			else{
 				/* not marked */
-				Newxz(si, 1, struct stateinfo);
+				Newxz(si, 1, stateinfo);
 				ptr_table_store(MY_CXT.newsv_reg, sv, si);
 			}
+			/* sv_dump(sv); // */
 			si->sv   = sv; /* mark */
 
 			if(MY_CXT.need_stateinfo){
@@ -157,7 +160,7 @@ mark_all(pTHX_ pMY_CXT){
 				si->line    = MY_CXT.line;
 			}
 		}
-	} END_VISIT;
+	} END_ARENA_VISIT;
 }
 
 static int
@@ -193,13 +196,78 @@ leaktrace_runops(pTHX){
 	return 0;
 }
 
+
+static stateinfo*
+make_leakedsv_list(pTHX_ pMY_CXT_ IV* const countp){
+	stateinfo* leaked = NULL;
+	int count = 0;
+
+#ifndef SvPADSTALE
+	/* PADSTALE emulation */
+	PTR_TBL_t* const sv_in_pad = ptr_table_new();
+	START_ARENA_VISIT{
+		if(SvTYPE(sv) == SVt_PVCV && CvPADLIST((CV*)sv)){
+			AV* const pad = (AV*)AvARRAY(CvPADLIST(sv))[1];
+			I32 const len = AvFILLp(pad)+1;
+			I32 i;
+
+			for(i = 0; i < len; i++){
+				SV* const padsv = AvARRAY(pad)[i];
+				/* register empty SVs */
+				switch(padsv ? SvTYPE(padsv) : SVTYPEMASK){
+				case SVt_PVAV:
+					if(AvARRAY(padsv))
+						goto end_for;
+					break;
+				case SVt_PVHV:
+					if(HvARRAY(padsv))
+						goto end_for;
+					break;
+				case SVt_NULL:
+					break;
+				default:
+					goto end_for;
+				}
+				/* empty SVs in pad is considered PADSTALE */
+				ptr_table_store(sv_in_pad, padsv, padsv);
+
+				end_for: NOOP;
+			}
+		}
+	}END_ARENA_VISIT;
+#endif
+
+	START_ARENA_VISIT{
+		stateinfo* const si = (stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
+
+		if(si && si->sv){
+#ifndef SvPADSTALE
+			if(ptr_table_fetch(sv_in_pad, sv)){
+				/* sv_dump(sv); //*/
+				continue; /* skip if sv is in pad */
+			}
+#endif
+			count++;
+			si->next = leaked; /* make a link */
+			leaked = si;
+		}
+	} END_ARENA_VISIT;
+
+#ifndef SvPADSTALE
+	ptr_table_free(sv_in_pad);
+#endif
+	*countp = count;
+
+	return leaked;
+}
+
 static void
-callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
+callback_each_leaked(pTHX_ stateinfo* leaked, SV* const callback){
 	while(leaked){
 		dSP;
 		I32 n;
 
-		if(SvIS_FREED(leaked->sv)){ /* NOTE: it is possible when the callback releases some SVs. */
+		if(IS_FREED(leaked->sv)){ /* NOTE: it is possible when the callback releases some SVs. */
 			leaked = leaked->next;
 			continue;
 		}
@@ -212,8 +280,8 @@ callback_each_leaked(pTHX_ struct stateinfo* leaked, SV* const callback){
 		EXTEND(SP, 3);
 		mXPUSHs(newRV_inc(leaked->sv));
 
-		mPUSHp(leaked->file, leaked->filelen);
-		mPUSHi(leaked->line);
+		mPUSHp(leaked->file, leaked->filelen); /* can be empty */
+		mPUSHi(leaked->line);                  /* can be zero  */
 
 		PUTBACK;
 
@@ -252,17 +320,17 @@ print_lines_around(pTHX_ PerlIO* const ofp, const char* const file, int const li
 }
 
 static void
-report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode){
+report_each_leaked(pTHX_ stateinfo* leaked, int const reporting_mode){
 	PerlIO* const logfp = Perl_error_log;
 
 	if(reporting_mode & REPORT_SOURCE_LINES){
 		ENTER;
 		SAVETMPS;
 
-		 /*
-		     local $/ = "\n"
-		     local $_;
-		  */
+		/*
+		    local $/ = "\n"
+		    local $_;
+		 */
 		SAVESPTR(PL_rs);
 		SAVE_DEFSV;
 
@@ -271,7 +339,7 @@ report_each_leaked(pTHX_ struct stateinfo* leaked, int const reporting_mode){
 	}
 
 	while(leaked){
-		assert(!SvIS_FREED(leaked->sv));
+		assert(!IS_FREED(leaked->sv));
 
 		if(leaked->filelen){
 			PerlIO_printf(logfp, "leaked %s(0x%p) from %s line %d.\n",
@@ -312,22 +380,15 @@ PROTOTYPES: DISABLE
 BOOT:
 {
 	MY_CXT_INIT;
-	MY_CXT.usedsv_reg     = NULL;
-	MY_CXT.newsv_reg      = NULL;
-	MY_CXT.enabled        = FALSE;
-	MY_CXT.need_stateinfo = FALSE;
-	PL_runops             = leaktrace_runops;
 	set_stateinfo(aTHX_ aMY_CXT_ PL_curcop); /* only to prevent core dumps with Devel::Cover */
+	PL_runops             = leaktrace_runops;
 }
 
 void
 CLONE(...)
 CODE:
 	MY_CXT_CLONE;
-	MY_CXT.usedsv_reg     = NULL;
-	MY_CXT.newsv_reg      = NULL;
-	MY_CXT.enabled        = FALSE;
-	MY_CXT.need_stateinfo = FALSE;
+	Zero(&MY_CXT, 1, my_cxt_t);
 	PERL_UNUSED_VAR(items);
 
 void
@@ -346,10 +407,10 @@ CODE:
 	MY_CXT.usedsv_reg       = ptr_table_new();
 	MY_CXT.newsv_reg        = ptr_table_new();
 
-	START_VISIT{
+	START_ARENA_VISIT{
 		/* mark as "used" */
 		ptr_table_store(MY_CXT.usedsv_reg, sv, sv);
-	} END_VISIT;
+	} END_ARENA_VISIT;
 
 void
 _finish(SV* mode = &PL_sv_undef)
@@ -357,9 +418,9 @@ PREINIT:
 	dMY_CXT;
 	I32 const gimme    = GIMME_V;
 	int reporting_mode = REPORT_DISABLED;
-	IV count           = 0;
+	IV count;
 	/* volatile to pass -Wuninitialized (longjmp) */
-	struct stateinfo* volatile leaked = NULL;
+	stateinfo* volatile leaked;
 	SV* volatile callback             = NULL;
 	SV* volatile invalid_mode         = NULL;
 PPCODE:
@@ -405,15 +466,7 @@ PPCODE:
 	MY_CXT.enabled        = FALSE;
 	MY_CXT.need_stateinfo = FALSE;
 
-	START_VISIT{
-		struct stateinfo* const si = (struct stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
-
-		if(si && si->sv){
-			count++;
-			si->next = leaked; /* make a link */
-			leaked = si;
-		}
-	} END_VISIT;
+	leaked = make_leakedsv_list(aTHX_ aMY_CXT_ &count);
 
 	ptr_table_free(MY_CXT.usedsv_reg);
 	MY_CXT.usedsv_reg = NULL;

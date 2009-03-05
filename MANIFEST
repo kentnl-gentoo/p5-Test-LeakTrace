@@ -1,7 +1,7 @@
 benchmark/devel_leaktrace.pl
-benchmark/devel_leaktrace_fast.pl
+benchmark/dlt_fast.pl
 benchmark/nothing.pl
-benchmark/test_leaktrace.pl
+benchmark/tlt.pl
 Changes
 example/callback.pl
 example/leaked.pl
@@ -41,7 +41,8 @@ t/08_leaktrace.t
 t/09_info_more.t
 t/10_bad_use.t
 t/11_logfp.t
+t/12_padstale.t
 xt/01_podspell.t
 xt/02_pod.t
 xt/03_pod-coverage.t
-xt/04_synopsis_syntax.t
+xt/04_synopsis.t

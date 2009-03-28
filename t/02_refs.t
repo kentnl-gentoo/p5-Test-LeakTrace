@@ -9,7 +9,10 @@ my $a;
 my @refs = leaked_refs{
 	$a = [];
 };
-is_deeply \@refs, [ [] ];
+is_deeply \@refs, [ [] ] or do{
+	require Data::Dumper;
+	diag(Data::Dumper->Dump([\@refs], ['*refs']));
+};
 
 @refs = leaked_refs{
 	my %a = (foo => 42);

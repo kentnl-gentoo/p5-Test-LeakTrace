@@ -19,5 +19,5 @@ leaks_cmp_ok{
 
 	$thr->join();
 
-} '<', 1, 'threads->create->join';
+} '<', 1;
 

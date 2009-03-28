@@ -13,11 +13,11 @@
 #define SvIS_FREED(sv) (SvFLAGS(sv) == SVTYPEMASK)
 #endif
 
-#ifdef SvPADSTALE
-#define IS_FREED(sv) (SvIS_FREED(sv) || SvPADSTALE(sv))
-#else
-#define IS_FREED(sv) SvIS_FREED(sv)
-#endif
+#ifndef SvPADSTALE
+#define SvPADSTALE(sv) (SvPADMY(sv) && SvREFCNT(sv) == 1)
+#endif /* !SvPADSTALE */
+
+#define IS_STALE(sv) (SvIS_FREED(sv) || SvPADSTALE(sv))
 
 #define PteKey(pte) ((SV*)pte->oldval)
 #define PteVal(pte) ((stateinfo*)pte->newval)
@@ -34,8 +34,8 @@ typedef struct{
 	bool need_stateinfo;
 
 	char* file;
-	int   filelen;
-	int   line;
+	I32   filelen;
+	I32   line;
 
 	PTR_TBL_t* usedsv_reg;
 	PTR_TBL_t* newsv_reg;
@@ -48,8 +48,8 @@ struct stateinfo{
 	SV* sv;
 
 	char* file;
-	int   filelen;
-	int   line;
+	I32   filelen;
+	I32   line;
 
 	stateinfo* next;
 };
@@ -59,11 +59,11 @@ struct stateinfo{
 */
 #define START_ARENA_VISIT STMT_START{                            \
 	SV* sva;                                                 \
-	for(sva = PL_sv_arenaroot; sva; sva = (SV*)SvANY(sva)){  \
+	for (sva = PL_sv_arenaroot; sva; sva = (SV*)SvANY(sva)){ \
 		const SV * const svend = &sva[SvREFCNT(sva)];    \
 		register SV* sv;                                 \
-		for(sv = sva + 1; sv < svend; ++sv){             \
-			if (!IS_FREED(sv))
+		for (sv = sva + 1; sv < svend; ++sv){            \
+			if (!IS_STALE(sv))
 
 #define END_ARENA_VISIT            \
 		} /* end for(1) */ \
@@ -105,22 +105,25 @@ my_ptr_table_free_val(pTHX_ PTR_TBL_t * const tbl){
 static void
 set_stateinfo(pTHX_ pMY_CXT_ COP* const cop){
 	const char* file;
+	I32 filelen;
+
 	assert(cop);
 
 	file = CopFILE(cop);
 	assert(file);
 
-	MY_CXT.filelen = strlen(file);
-	Renew(MY_CXT.file, MY_CXT.filelen+1, char);
-	Copy(file, MY_CXT.file, MY_CXT.filelen+1, char);
+	filelen = strlen(file);
+	if(filelen > MY_CXT.filelen) Renew(MY_CXT.file, filelen+1, char);
+	Copy(file, MY_CXT.file, filelen+1, char);
+	MY_CXT.filelen = filelen;
 
-	MY_CXT.line = (int)CopLINE(cop);
+	MY_CXT.line = (I32)CopLINE(cop);
 }
 
 static void
 unmark_all(pTHX_ pMY_CXT){
 	START_PTR_TABLE_VISIT(MY_CXT.newsv_reg) {
-		if(IS_FREED(PteKey(pte))){
+		if(IS_STALE(PteKey(pte))){
 			PteVal(pte)->sv = NULL; /* unmark */
 		}
 	} END_PTR_TABLE_VISIT;
@@ -154,7 +157,7 @@ mark_all(pTHX_ pMY_CXT){
 			si->sv   = sv; /* mark */
 
 			if(MY_CXT.need_stateinfo){
-				Renew(si->file, MY_CXT.filelen+1, char);
+				if(MY_CXT.filelen > si->filelen) Renew(si->file, MY_CXT.filelen+1, char);
 				Copy(MY_CXT.file, si->file, MY_CXT.filelen+1, char);
 				si->filelen = MY_CXT.filelen;
 				si->line    = MY_CXT.line;
@@ -200,62 +203,19 @@ leaktrace_runops(pTHX){
 static stateinfo*
 make_leakedsv_list(pTHX_ pMY_CXT_ IV* const countp){
 	stateinfo* leaked = NULL;
-	int count = 0;
+	IV count = 0;
 
-#ifndef SvPADSTALE
-	/* PADSTALE emulation */
-	PTR_TBL_t* const sv_in_pad = ptr_table_new();
-	START_ARENA_VISIT{
-		if(SvTYPE(sv) == SVt_PVCV && CvPADLIST((CV*)sv)){
-			AV* const pad = (AV*)AvARRAY(CvPADLIST(sv))[1];
-			I32 const len = AvFILLp(pad)+1;
-			I32 i;
-
-			for(i = 0; i < len; i++){
-				SV* const padsv = AvARRAY(pad)[i];
-				/* register empty SVs */
-				switch(padsv ? SvTYPE(padsv) : SVTYPEMASK){
-				case SVt_PVAV:
-					if(AvARRAY(padsv))
-						goto end_for;
-					break;
-				case SVt_PVHV:
-					if(HvARRAY(padsv))
-						goto end_for;
-					break;
-				case SVt_NULL:
-					break;
-				default:
-					goto end_for;
-				}
-				/* empty SVs in pad is considered PADSTALE */
-				ptr_table_store(sv_in_pad, padsv, padsv);
-
-				end_for: NOOP;
-			}
-		}
-	}END_ARENA_VISIT;
-#endif
 
 	START_ARENA_VISIT{
 		stateinfo* const si = (stateinfo*)ptr_table_fetch(MY_CXT.newsv_reg, sv);
 
 		if(si && si->sv){
-#ifndef SvPADSTALE
-			if(ptr_table_fetch(sv_in_pad, sv)){
-				/* sv_dump(sv); //*/
-				continue; /* skip if sv is in pad */
-			}
-#endif
 			count++;
 			si->next = leaked; /* make a link */
 			leaked = si;
 		}
 	} END_ARENA_VISIT;
 
-#ifndef SvPADSTALE
-	ptr_table_free(sv_in_pad);
-#endif
 	*countp = count;
 
 	return leaked;
@@ -267,7 +227,7 @@ callback_each_leaked(pTHX_ stateinfo* leaked, SV* const callback){
 		dSP;
 		I32 n;
 
-		if(IS_FREED(leaked->sv)){ /* NOTE: it is possible when the callback releases some SVs. */
+		if(IS_STALE(leaked->sv)){ /* NOTE: it is possible when the callback releases some SVs. */
 			leaked = leaked->next;
 			continue;
 		}
@@ -299,16 +259,16 @@ callback_each_leaked(pTHX_ stateinfo* leaked, SV* const callback){
 }
 
 static void
-print_lines_around(pTHX_ PerlIO* const ofp, const char* const file, int const lineno){
+print_lines_around(pTHX_ PerlIO* const ofp, const char* const file, I32 const lineno){
 	PerlIO* const ifp = PerlIO_open(file, "r");
-	SV* const sv = DEFSV;
-	int i = 0;
+	SV* const sv      = DEFSV;
+	int i             = 0;
 	if(ifp){
 		while(sv_gets(sv, ifp, FALSE)){
 			i++;
 
 			if( i >= (lineno-1) ){
-				PerlIO_printf(ofp, "%4d:%"SVf, i, sv);
+				PerlIO_printf(ofp, "%4d:%"SVf, (int)i, sv);
 
 				if( i >= (lineno+1) ){
 					break;
@@ -339,13 +299,13 @@ report_each_leaked(pTHX_ stateinfo* leaked, int const reporting_mode){
 	}
 
 	while(leaked){
-		assert(!IS_FREED(leaked->sv));
+		assert(!IS_STALE(leaked->sv));
 
 		if(leaked->filelen){
 			PerlIO_printf(logfp, "leaked %s(0x%p) from %s line %d.\n",
 				sv_reftype(leaked->sv, FALSE),
 				leaked->sv,
-				leaked->file, leaked->line);
+				leaked->file, (int)leaked->line);
 
 			if(leaked->line && (reporting_mode & REPORT_SOURCE_LINES)){
 				print_lines_around(aTHX_ logfp, leaked->file, leaked->line);
@@ -381,7 +341,7 @@ BOOT:
 {
 	MY_CXT_INIT;
 	set_stateinfo(aTHX_ aMY_CXT_ PL_curcop); /* only to prevent core dumps with Devel::Cover */
-	PL_runops             = leaktrace_runops;
+	PL_runops = leaktrace_runops;
 }
 
 void

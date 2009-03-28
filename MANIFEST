@@ -4,7 +4,7 @@ benchmark/nothing.pl
 benchmark/tlt.pl
 Changes
 example/callback.pl
-example/leaked.pl
+example/leaked_refs.pl
 example/leaktrace.t
 example/method_cache.pl
 example/script.pl

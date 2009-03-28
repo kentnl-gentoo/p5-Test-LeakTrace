@@ -14,9 +14,17 @@ sub _leaks_cmp_ok{
 	# calls to prepare cache in $block
 	$block->();
 
-	$description ||= sprintf 'the number of leaks %-2s %s', $cmp_op, $expected;
 
 	my $got    = &Test::LeakTrace::leaked_count($block);
+
+	my $desc = sprintf 'leaks %s %-2s %s', $got, $cmp_op, $expected;
+	if(defined $description){
+		$description .= " ($desc)";
+	}
+	else{
+		$description = $desc;
+	}
+
 	my $result = $Test->cmp_ok($got, $cmp_op, $expected, $description);
 
 	if(!$result){
@@ -38,11 +46,15 @@ __END__
 
 Test::LeakTrace::Heavy - Test::LeakTrace guts
 
+=head1 SYNOPSIS
+
+	use Test::LeakTrace qw(:test);
+
 =head1 DESCRIPTION
 
 This module implements test commands for C<Test::LeakTrace>.
 
-Seek L<Test::LeakTrace>.
+See L<Test::LeakTrace>.
 
 =cut
 

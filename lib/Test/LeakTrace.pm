@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use Carp ();
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -24,16 +24,15 @@ our %EXPORT_TAGS = (
 
 # for backwords compatibility (< 0.06)
 # they will been removed at 0.10
-sub not_leaked{
+push @EXPORT, qw(not_leaked leaked_cmp_ok);
+sub not_leaked(&;$){
 	warnings::warnif deprecated => 'not_leaked() is deprecated. Use no_leaks_ok() instead.';
 	goto &no_leaks_ok;
 }
-sub leaked_cmp_ok{
+sub leaked_cmp_ok(&$$;$){
 	warnings::warnif deprecated => 'leaked_cmp_ok() is deprecated. Use leaks_cmp_ok() instead.';
 	goto &leaks_cmp_ok;
 }
-push @EXPORT, qw(not_leaked leaked_cmp_ok);
-
 
 sub no_leaks_ok(&;$){
 	# ($block, $description)
@@ -95,13 +94,15 @@ sub leaktrace(&;$){
 1;
 __END__
 
+=for stopwords sv
+
 =head1 NAME
 
 Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.07.
+This document describes Test::LeakTrace version 0.08.
 
 =head1 SYNOPSIS
 
@@ -163,20 +164,20 @@ executes a block more than once.
 
 =head2 Exported functions
 
-=head3 leaked_info { BLOCK }
+=head3 C<< leaked_info { BLOCK } >>
 
 Executes I<BLOCK> and returns a list of leaked SVs and places where the SVs
 come from, i.e. C<< [$ref, $file, $line] >>.
 
-=head3 leaked_refs { BLOCK }
+=head3 C<< leaked_refs { BLOCK } >>
 
 Executes I<BLOCK> and returns a list of leaked SVs.
 
-=head3 leaked_count { BLOCK }
+=head3 C<< leaked_count { BLOCK } >>
 
 Executes I<BLOCK> and returns the number of leaked SVs.
 
-=head3 leaktrace { BLOCK } ?($mode | \&callback)
+=head3 C<< leaktrace { BLOCK } ?($mode | \&callback) >>
 
 Executes I<BLOCK> and reports leaked SVs to C<*STDERR>.
 
@@ -186,7 +187,7 @@ Defined I<$mode>s are:
 
 =item -simple
 
-Default. Reports the leaked SV identity (type and address), filename and line number.
+Default. Reports the leaked SV identity (type and address), file name and line number.
 
 =item -sv_dump
 
@@ -203,7 +204,7 @@ Both B<-sv_dump> and B<-lines>.
 
 =back
 
-=head3 no_leaks_ok { BLOCK } ?$description
+=head3 C<< no_leaks_ok { BLOCK } ?$description >>
 
 Tests that I<BLOCK> does not leaks SVs. This is a test function
 using C<Test::Builder>.
@@ -211,9 +212,9 @@ using C<Test::Builder>.
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
-=head3 leaks_cmp_ok { BLOCK } $cmp_op, $number, ?$description
+=head3 C<< leaks_cmp_ok { BLOCK } $cmp_op, $number, ?$description >>
 
-Tests that I<BLOCK> leakes a specific number of SVs. This is a test
+Tests that I<BLOCK> leaks a specific number of SVs. This is a test
 function using C<Test::Builder>.
 
 Note that I<BLOCK> is called more than once. This is because

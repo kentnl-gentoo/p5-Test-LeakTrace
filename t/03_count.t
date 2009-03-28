@@ -12,7 +12,6 @@ sub normal{
 	$a{b} = 1;
 	$b{a} = 2;
 }
-
 is leaked_count(\&normal), 0, 'not leaked(1)';
 is leaked_count(\&normal), 0, 'not leaked(2)';
 

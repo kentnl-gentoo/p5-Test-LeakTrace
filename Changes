@@ -1,5 +1,10 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.08 Sat Mar 28 12:48:03 2009
+	- fix typo in pods
+	- fix SvPADSTALE emulation in older perls
+	- more informative description for test functions
+
 0.07 Thu Mar  5 10:29:03 2009
 	- fix confuging reports on SVs with SvPADSTALE
 

@@ -14,7 +14,4 @@ sub foo{
 }
 
 
-no_leaks_ok{
-	foo();
-} 'PADSTALE sv is not a memory leak';
-
+no_leaks_ok \&foo, 'PADSTALE sv is not a memory leak';

@@ -7,7 +7,7 @@ Test::LeakTrace::JA - メモリリークを追跡する
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.08.
+This document describes Test::LeakTrace version 0.09.
 
 =head1 SYNOPSIS
 
@@ -202,6 +202,11 @@ C<Test::LeakTrace>はアリーナを走査します。アリーナとは，Perl�
 =head1 DEPENDENCIES
 
 Perl 5.8.1 or later, and a C compiler.
+
+=head1 CAVEATS
+
+C<Test::LeakTrace>はC<Devel::Cover>と一緒に動かすことはできません。
+したがって，C<Devel::Cover>の元で動いていることが検出されると，テスト関数は何も行わずにテストをパスさせます。
 
 =head1 BUGS
 

@@ -3,9 +3,8 @@ package Test::LeakTrace;
 use 5.008_001;
 use strict;
 use warnings;
-use Carp ();
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -34,23 +33,11 @@ sub leaked_cmp_ok(&$$;$){
 	goto &leaks_cmp_ok;
 }
 
-sub no_leaks_ok(&;$){
-	# ($block, $description)
-	require Test::LeakTrace::Heavy;
-	splice @_, 1, 0, ('==', 0); # ($block, '==', 0, $description);
-	goto &Test::LeakTrace::Heavy::_leaks_cmp_ok;
-}
-sub leaks_cmp_ok(&$$;$){
-	# ($block, $cmp_op, $number, $description);
-	require Test::LeakTrace::Heavy;
-	goto &Test::LeakTrace::Heavy::_leaks_cmp_ok;
-}
-
 sub _do_leaktrace{
 	my($block, $name, $need_stateinfo, $mode) = @_;
 
 	if(!defined($mode) && !defined wantarray){
-		Carp::croak("Useless use of $name() in void context");
+		warnings::warnif void => "Useless use of $name() in void context";
 	}
 
 	local $SIG{__DIE__} = 'DEFAULT';
@@ -77,7 +64,6 @@ sub leaked_info(&){
 	return _do_leaktrace($block, 'leaked_refs', 1);
 }
 
-
 sub leaked_count(&){
 	my($block) = @_;
 	return scalar _do_leaktrace($block, 'leaked_count', 0);
@@ -85,16 +71,59 @@ sub leaked_count(&){
 
 sub leaktrace(&;$){
 	my($block, $mode) = @_;
-
-	$mode = -simple unless defined $mode;
-	_do_leaktrace($block, 'leaktrace', 1, $mode);
+	_do_leaktrace($block, 'leaktrace', 1, defined($mode) ? $mode : -simple);
 	return;
 }
+
+
+sub leaks_cmp_ok(&$$;$){
+	my($block, $cmp_op, $expected, $description) = @_;
+
+	require 'Test/Builder.pm'; # not to create its namespace
+	my $Test = Test::Builder->new();
+
+	if(!_runops_installed()){
+		my $mod = exists $INC{'Devel/Cover.pm'} ? 'Devel::Cover' : 'strange runops routines';
+		return $Test->ok(1, "skipped (under $mod)");
+	}
+
+	# calls to prepare cache in $block
+	$block->();
+
+	my $got = _do_leaktrace($block, 'leaked_count', 0);
+
+	my $desc = sprintf 'leaks %s %-2s %s', $got, $cmp_op, $expected;
+	if(defined $description){
+		$description .= " ($desc)";
+	}
+	else{
+		$description = $desc;
+	}
+
+	my $result = $Test->cmp_ok($got, $cmp_op, $expected, $description);
+
+	if(!$result){
+		open local(*STDERR), '>', \(my $content = '');
+		$block->(); # calls it again because opening *STDERR changes the run-time environment
+
+		_do_leaktrace($block, 'leaktrace', 1, -verbose);
+		$Test->diag($content);
+	}
+
+	return $result;
+}
+
+sub no_leaks_ok(&;$){
+	# ($block, $description)
+	splice @_, 1, 0, ('==', 0); # ($block, '==', 0, $description);
+	goto &leaks_cmp_ok;
+}
+
 
 1;
 __END__
 
-=for stopwords sv
+=for stopwords sv gfx
 
 =head1 NAME
 
@@ -102,7 +131,7 @@ Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.08.
+This document describes Test::LeakTrace version 0.09.
 
 =head1 SYNOPSIS
 
@@ -263,6 +292,12 @@ Here is a test script template that checks memory leaks.
 
 Perl 5.8.1 or later, and a C compiler.
 
+=head1 CAVEATS
+
+C<Test::LeakTrace> does not work with C<Devel::Cover> and modules which install
+their own C<runops> routines, or the perl executor. So if the test functions of
+this module detect strange C<runops> routines, they do nothing and report okay.
+
 =head1 BUGS
 
 No bugs have been reported.
@@ -289,11 +324,11 @@ F<sv.c>.
 
 =head1 AUTHOR
 
-Goro Fuji E<lt>gfuji(at)cpan.orgE<gt>.
+Goro Fuji(gfx) E<lt>gfuji(at)cpan.orgE<gt>.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2009, Goro Fuji. Some rights reserved.
+Copyright (c) 2009, Goro Fuji(gfx). Some rights reserved.
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

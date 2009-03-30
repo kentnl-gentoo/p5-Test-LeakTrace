@@ -19,7 +19,6 @@ inc/Module/Install/MakeMaker.pm
 inc/Module/Install/Metadata.pm
 LeakTrace.xs
 lib/Test/LeakTrace.pm
-lib/Test/LeakTrace/Heavy.pm
 lib/Test/LeakTrace/JA.pod
 lib/Test/LeakTrace/Script.pm
 Makefile.PL

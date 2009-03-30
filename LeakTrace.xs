@@ -248,7 +248,7 @@ callback_each_leaked(pTHX_ stateinfo* leaked, SV* const callback){
 		n = call_sv(callback, G_VOID);
 
 		SPAGAIN;
-		while(n--) POPs;
+		while(n--) (void)POPs;
 		PUTBACK;
 
 		FREETMPS;
@@ -359,6 +359,7 @@ CODE:
 	if(MY_CXT.enabled){
 		Perl_croak(aTHX_ "Cannot start LeakTrace inside its scope");
 	}
+
 	assert(MY_CXT.usedsv_reg == NULL);
 	assert(MY_CXT.newsv_reg  == NULL);
 
@@ -371,6 +372,7 @@ CODE:
 		/* mark as "used" */
 		ptr_table_store(MY_CXT.usedsv_reg, sv, sv);
 	} END_ARENA_VISIT;
+
 
 void
 _finish(SV* mode = &PL_sv_undef)
@@ -479,4 +481,11 @@ PPCODE:
 	if(invalid_mode){
 		Perl_croak(aTHX_ "Invalid reporting mode: %"SVf, invalid_mode);
 	}
+
+bool
+_runops_installed()
+CODE:
+	RETVAL = (PL_runops == leaktrace_runops);
+OUTPUT:
+	RETVAL
 

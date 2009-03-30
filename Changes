@@ -1,5 +1,9 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.09 Mon Mar 30 11:11:53 2009
+	- test functions become no-op under Devel::Cover (RT#294666)
+	- merge LeakTrace/Heavy.pm into LeakTrace.pm
+
 0.08 Sat Mar 28 12:48:03 2009
 	- fix typo in pods
 	- fix SvPADSTALE emulation in older perls

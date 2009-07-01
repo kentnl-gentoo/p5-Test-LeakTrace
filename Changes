@@ -1,5 +1,10 @@
 Revision history for Perl extension Test::LeakTrace
 
+0.10 Wed Jul  1 15:36:57 2009
+	- support for Test::More subtests (http://use.perl.org/~Ovid/journal/39193)
+		- thanks to charsbar (http://d.hatena.ne.jp/charsbar/20090701/1246415840)
+	- remove deprecated functions (not_leaked() and leaked_cmp_ok())
+
 0.09 Mon Mar 30 11:11:53 2009
 	- test functions become no-op under Devel::Cover (RT#294666)
 	- merge LeakTrace/Heavy.pm into LeakTrace.pm

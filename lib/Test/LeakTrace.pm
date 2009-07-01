@@ -4,12 +4,15 @@ use 5.008_001;
 use strict;
 use warnings;
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 
-use Exporter qw(import);
+use Test::Builder::Module;
+our @ISA = qw(Test::Builder::Module);
+
+use Exporter qw(import); # use Exporter::import for backward compatibility
 our @EXPORT = qw(
 	leaktrace leaked_refs leaked_info leaked_count
 	no_leaks_ok leaks_cmp_ok
@@ -21,17 +24,6 @@ our %EXPORT_TAGS = (
 	util => [qw(leaktrace leaked_refs leaked_info leaked_count)],
 );
 
-# for backwords compatibility (< 0.06)
-# they will been removed at 0.10
-push @EXPORT, qw(not_leaked leaked_cmp_ok);
-sub not_leaked(&;$){
-	warnings::warnif deprecated => 'not_leaked() is deprecated. Use no_leaks_ok() instead.';
-	goto &no_leaks_ok;
-}
-sub leaked_cmp_ok(&$$;$){
-	warnings::warnif deprecated => 'leaked_cmp_ok() is deprecated. Use leaks_cmp_ok() instead.';
-	goto &leaks_cmp_ok;
-}
 
 sub _do_leaktrace{
 	my($block, $name, $need_stateinfo, $mode) = @_;
@@ -79,8 +71,7 @@ sub leaktrace(&;$){
 sub leaks_cmp_ok(&$$;$){
 	my($block, $cmp_op, $expected, $description) = @_;
 
-	require 'Test/Builder.pm'; # not to create its namespace
-	my $Test = Test::Builder->new();
+	my $Test = __PACKAGE__->builder;
 
 	if(!_runops_installed()){
 		my $mod = exists $INC{'Devel/Cover.pm'} ? 'Devel::Cover' : 'strange runops routines';
@@ -131,7 +122,7 @@ Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.09.
+This document describes Test::LeakTrace version 0.10.
 
 =head1 SYNOPSIS
 

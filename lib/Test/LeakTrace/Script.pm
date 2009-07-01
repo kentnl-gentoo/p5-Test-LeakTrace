@@ -12,6 +12,8 @@ sub import{
 	$Mode = shift if @_;
 }
 
+no warnings 'void';
+
 INIT{
 	Test::LeakTrace::_start(1);
 }

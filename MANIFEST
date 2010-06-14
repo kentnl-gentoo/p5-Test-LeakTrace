@@ -17,6 +17,7 @@ inc/Module/Install/Base.pm
 inc/Module/Install/Makefile.pm
 inc/Module/Install/MakeMaker.pm
 inc/Module/Install/Metadata.pm
+inc/Module/Install/Repository.pm
 LeakTrace.xs
 lib/Test/LeakTrace.pm
 lib/Test/LeakTrace/JA.pod
@@ -41,6 +42,8 @@ t/09_info_more.t
 t/10_bad_use.t
 t/11_logfp.t
 t/12_padstale.t
+t/13_do.t
+t/lib/foo.pl
 xt/01_podspell.t
 xt/02_pod.t
 xt/03_pod-coverage.t

@@ -4,7 +4,7 @@ use 5.008_001;
 use strict;
 use warnings;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
@@ -16,12 +16,13 @@ use Exporter qw(import); # use Exporter::import for backward compatibility
 our @EXPORT = qw(
     leaktrace leaked_refs leaked_info leaked_count
     no_leaks_ok leaks_cmp_ok
+    count_sv
 );
 
 our %EXPORT_TAGS = (
     all  => \@EXPORT,
     test => [qw(no_leaks_ok leaks_cmp_ok)],
-    util => [qw(leaktrace leaked_refs leaked_info leaked_count)],
+    util => [qw(leaktrace leaked_refs leaked_info leaked_count count_sv)],
 );
 
 
@@ -30,6 +31,13 @@ sub _do_leaktrace{
 
     if(!defined($mode) && !defined wantarray){
         warnings::warnif void => "Useless use of $name() in void context";
+    }
+
+    if($name eq 'leaked_count') {
+        my $start;
+        $start = count_sv();
+        $block->();
+        return count_sv() - $start;
     }
 
     local $SIG{__DIE__} = 'DEFAULT';
@@ -81,11 +89,7 @@ sub leaks_cmp_ok(&$$;$){
     # calls to prepare cache in $block
     $block->();
 
-    #my $got = _do_leaktrace($block, 'leaked_count', 0);
-    my($start, $got);
-    $start = _count_sv_in_arena();
-    $block->();
-    $got   = _count_sv_in_arena() - $start;
+    my $got = _do_leaktrace($block, 'leaked_count', 0);
 
     my $desc = sprintf 'leaks %s %-2s %s', $got, $cmp_op, $expected;
     if(defined $description){
@@ -110,7 +114,7 @@ sub leaks_cmp_ok(&$$;$){
 
 sub no_leaks_ok(&;$){
     # ($block, $description)
-    splice @_, 1, 0, ('==', 0); # ($block, '==', 0, $description);
+    splice @_, 1, 0, ('<=', 0); # ($block, '<=', 0, $description);
     goto &leaks_cmp_ok;
 }
 
@@ -126,7 +130,7 @@ Test::LeakTrace - Traces memory leaks
 
 =head1 VERSION
 
-This document describes Test::LeakTrace version 0.11.
+This document describes Test::LeakTrace version 0.12.
 
 =head1 SYNOPSIS
 
@@ -244,6 +248,10 @@ function using C<Test::Builder>.
 Note that I<BLOCK> is called more than once. This is because
 I<BLOCK> might prepare caches which are not memory leaks.
 
+=head3 C<< count_sv() >>
+
+Counts all the SVs in the arena.
+
 =head2 Script interface
 
 Like C<Devel::LeakTrace> C<Test::LeakTrace::Script> is provided for whole scripts.
@@ -323,7 +331,7 @@ Goro Fuji(gfx) E<lt>gfuji(at)cpan.orgE<gt>.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2009, Goro Fuji(gfx). Some rights reserved.
+Copyright (c) 2009-2010, Goro Fuji(gfx). All rights reserved.
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
